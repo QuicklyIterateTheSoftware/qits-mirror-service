@@ -20,8 +20,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * The npm cache on its SECOND mount, {@code /mirror/npm} — the one the edge reaches it on, because
- * the edge hands {@code /artifacts} to qits-artifacts on every vhost.
+ * The npm cache on its SECOND mount, {@code /npm} — at the root of this service's own hostname,
+ * which is the one the edge reaches it on: the edge routes any path no other app claims to the
+ * hostname's own app, and hands {@code /artifacts} to qits-artifacts on every vhost regardless.
  *
  * <p>What this adds over qits-registries-npm's {@code NpmMirrorMountTest} is this service's own
  * configuration: that the mount is switched on here, at the path the README and the client
@@ -63,11 +64,11 @@ class NpmMirrorMountSmokeTest {
 
     try (NpmClient viaEdge = throughTheEdge(); NpmClient npm = inNetwork()) {
       HttpResponse<String> packument =
-          viaEdge.packumentAt("mirror/npm", MirrorRepositorySeeder.NPM_CACHE, subject.name());
+          viaEdge.packumentAt("npm", MirrorRepositorySeeder.NPM_CACHE, subject.name());
       assertEquals(200, packument.statusCode(), packument.body());
       String tarballUrl = NpmClient.tarballUrl(NpmClient.parse(packument.body()), "1.0.0");
       assertEquals(
-          PUBLIC + "/mirror/npm/npmjs/" + subject.name() + "/-/" + subject.tarballFile(),
+          PUBLIC + "/npm/npmjs/" + subject.name() + "/-/" + subject.tarballFile(),
           tarballUrl);
 
       // The same path on this process: the bytes, and the HEAD twin a probing client sends first.
@@ -87,11 +88,11 @@ class NpmMirrorMountSmokeTest {
       // npm encodes the scope separator for a packument and follows the tarball url verbatim.
       HttpResponse<String> packument =
           viaEdge.packumentAt(
-              "mirror/npm", MirrorRepositorySeeder.NPM_CACHE, subject.name().replace("/", "%2f"));
+              "npm", MirrorRepositorySeeder.NPM_CACHE, subject.name().replace("/", "%2f"));
       assertEquals(200, packument.statusCode(), packument.body());
       String tarballUrl = NpmClient.tarballUrl(NpmClient.parse(packument.body()), "1.0.0");
       assertEquals(
-          PUBLIC + "/mirror/npm/npmjs/" + subject.name() + "/-/" + subject.tarballFile(),
+          PUBLIC + "/npm/npmjs/" + subject.name() + "/-/" + subject.tarballFile(),
           tarballUrl);
 
       HttpResponse<byte[]> tarball = npm.tarball(tarballUrl.replace(PUBLIC + "/", root.toString()));
@@ -121,20 +122,20 @@ class NpmMirrorMountSmokeTest {
   @Test
   void theMirrorMountIsAMachinePathAndNeverTheSpa() {
     // A path with no handler behind it answers npm's JSON envelope from the registry's own
-    // catch-all — a real route under /mirror/npm, which the SPA fallback (a late catch-all) never
-    // gets ahead of.
+    // catch-all — a real route under /npm, which the SPA fallback (a late catch-all) never gets
+    // ahead of.
     try (NpmClient npm = inNetwork()) {
-      HttpResponse<String> miss = npm.get("mirror/npm/npmjs/-/v1/search?text=left-pad");
+      HttpResponse<String> miss = npm.get("npm/npmjs/-/v1/search?text=left-pad");
       assertEquals(404, miss.statusCode());
       assertTrue(miss.body().contains("\"error\""), "npm's envelope, never a page: " + miss.body());
     }
     // And the belt: Quinoa is off in tests, so the fallback itself cannot be exercised here — what
     // can be is that the mount sits inside a segment the fallback is told to leave alone.
-    // Segment-matched, as Quinoa matches: /mirror covers /mirror/npm, /mirrors would not.
+    // Segment-matched, as Quinoa matches: /npm covers /npm/npmjs, /npmx would not.
     assertTrue(
         spaIgnoredPrefixes.stream()
-            .anyMatch(prefix -> "/mirror/npm".equals(prefix) || "/mirror/npm".startsWith(prefix + "/")),
-        "quarkus.quinoa.ignored-path-prefixes must cover /mirror/npm; is " + spaIgnoredPrefixes);
+            .anyMatch(prefix -> "/npm/npmjs".equals(prefix) || "/npm/npmjs".startsWith(prefix + "/")),
+        "quarkus.quinoa.ignored-path-prefixes must cover /npm/npmjs; is " + spaIgnoredPrefixes);
   }
 
   private TinyPackage upstream(String name) {

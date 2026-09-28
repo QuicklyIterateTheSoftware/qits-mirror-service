@@ -19,7 +19,7 @@ Three repository types, all of them caches:
 
 | Type | Row | Upstream | Served at |
 |---|---|---|---|
-| `NPM_PROXY` | `npmjs` | `registry.npmjs.org` | `/artifacts/npm/npmjs/…` and `/mirror/npm/npmjs/…` |
+| `NPM_PROXY` | `npmjs` | `registry.npmjs.org` | `/artifacts/npm/npmjs/…` and `/npm/npmjs/…` |
 | `MAVEN_PROXY` | `central` | `repo1.maven.org/maven2` | `/artifacts/maven/central/…` and `/mirror/maven/central/…` |
 | `OCI_MIRROR` | `hub`, `quay`, `redhat` | one `oci_mirror_upstream` row each | `/v2/<slug>/…` |
 
@@ -28,23 +28,30 @@ Three repository types, all of them caches:
 (`http://dev-qits-platform-mirror:8080/artifacts/npm/npmjs/`). Through the public edge
 it is unreachable: the edge routes `/artifacts` to `qits-artifacts` on **every** vhost,
 so `https://mirror.<env>.<domain>/artifacts/npm/npmjs/left-pad` is answered by the
-registry — `404 no such npm repository 'npmjs'`. `/mirror` is this application's own
-route, so the same caches are also mounted under it (`qits.registries.{npm,maven}.mirror-mount`),
-and that is the path anything outside the swarm uses — a remote CI runner, a workstation.
-Both paths serve the same rows with the same handlers; neither is going away.
+registry — `404 no such npm repository 'npmjs'`. The maven cache's second mount stays
+under this application's own `/mirror` segment (`qits.registries.maven.mirror-mount`).
+The npm cache's second mount, instead, sits at the **root** of this service's own
+hostname — `qits.registries.npm.mirror-mount=/npm` — because the edge already routes any
+path no other app claims to the hostname's own app, so a bare `/npm` needs no gateway
+entry of its own (verified: `https://mirror.qits.wohlben.eu/npm/left-pad` reaches this
+service). The library backing both mounts (`NpmRoutes.mirrorMount`) takes only ONE extra
+mount, never a list, so `/npm` **replaces** the earlier `/mirror/npm` rather than adding
+to it — that path was released an hour before this change and nothing but the
+not-yet-released CI runner work pointed at it. Every path serves the same rows with the
+same handlers; the two `/artifacts/*` roots are not going away.
 
 npm has one wrinkle maven does not: a packument names its tarballs by **absolute** URL.
 The `qits-registries-npm` jar builds `dist.tarball` from the request, never from
 configuration — the scheme and host from `X-Forwarded-Proto` / `X-Forwarded-Host` (the
 edge sets both, keeping the authority the client dialled), or the authority this process
 was dialled on when there is no forwarding hop — plus the path the packument was asked
-on. So a document fetched at `https://mirror.qits.wohlben.eu/mirror/npm/npmjs/<pkg>`
-names `https://mirror.qits.wohlben.eu/mirror/npm/npmjs/<pkg>/-/<pkg>-<v>.tgz`, and one
+on. So a document fetched at `https://mirror.qits.wohlben.eu/npm/npmjs/<pkg>`
+names `https://mirror.qits.wohlben.eu/npm/npmjs/<pkg>/-/<pkg>-<v>.tgz`, and one
 fetched in-network at `/artifacts/npm/npmjs/` names exactly what it always did.
 
 The registry a client outside the swarm sets is therefore
 
-    https://mirror.<env>.<domain>/mirror/npm/npmjs/
+    https://mirror.<env>.<domain>/npm/npmjs/
 
 and the vhost is gated, so npm needs a credential for it. npm sends `_authToken` as
 `Authorization: Bearer <token>`, and the edge accepts as a bearer either a platform JWT
@@ -54,10 +61,10 @@ client id and secret. A remote CI runner uses the `qits_tok_` token it was issue
 person has no long-lived token of their own: a platform JWT works as `_authToken` until
 it expires, and an idp client id and secret is the long-lived choice.
 
-    registry=https://mirror.qits.wohlben.eu/mirror/npm/npmjs/
-    //mirror.qits.wohlben.eu/mirror/npm/npmjs/:_authToken=<qits_tok_… or a platform JWT>
+    registry=https://mirror.qits.wohlben.eu/npm/npmjs/
+    //mirror.qits.wohlben.eu/npm/npmjs/:_authToken=<qits_tok_… or a platform JWT>
     # or, with a client id and secret instead:
-    # //mirror.qits.wohlben.eu/mirror/npm/npmjs/:_auth=<base64 of id:secret>
+    # //mirror.qits.wohlben.eu/npm/npmjs/:_auth=<base64 of id:secret>
 
 Hosted publishing is not its job. The `qits-registries` modules carry both sides of
 each format because the two share a table and a set of routes, so the hosted
@@ -333,16 +340,17 @@ Readiness is at `/mirror/q/health/ready`.
 **The protocol routes do not follow that segment, and cannot.** Their prefixes are
 literals in the `qits-registries` jars, so this service answers npm and maven on
 the same `/artifacts/*` paths `qits-artifacts` does, and OCI at the host root like
-every registry. npm and maven are *also* mounted under `/mirror` (see "Why the npm
-and maven caches answer on two paths" above), because the edge hands `/artifacts` to
-`qits-artifacts` whatever the host. The per-service host is what settles that collision: those paths are
-reached on `mirror.<env>.<domain>`, so no gateway entry has to choose between two
-services for `/artifacts/*`. Splitting the client configuration (npm scoped registries,
-dockerd `registry-mirrors`, the maven repositories list) is still the cutover phase's job.
+every registry. maven is *also* mounted under `/mirror`, and npm at the root, `/npm`
+(see "Why the npm and maven caches answer on two paths" above), because the edge hands
+`/artifacts` to `qits-artifacts` whatever the host. The per-service host is what settles
+that collision: those paths are reached on `mirror.<env>.<domain>`, so no gateway entry
+has to choose between two services for `/artifacts/*`. Splitting the client configuration
+(npm scoped registries, dockerd `registry-mirrors`, the maven repositories list) is still
+the cutover phase's job.
 
-Because the client now sits at `/`, those three roots are inside the SPA fallback's
+Because the client now sits at `/`, those roots are inside the SPA fallback's
 reach for the first time, and `quarkus.quinoa.ignored-path-prefixes` lists them
-absolutely — `/mirror,/artifacts,/v2` — so a mistyped machine path is a 404 rather
+absolutely — `/mirror,/npm,/artifacts,/v2` — so a mistyped machine path is a 404 rather
 than a page.
 
 ## Not here yet
