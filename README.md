@@ -19,9 +19,45 @@ Three repository types, all of them caches:
 
 | Type | Row | Upstream | Served at |
 |---|---|---|---|
-| `NPM_PROXY` | `npmjs` | `registry.npmjs.org` | `/artifacts/npm/npmjs/…` |
-| `MAVEN_PROXY` | `central` | `repo1.maven.org/maven2` | `/artifacts/maven/central/…` |
+| `NPM_PROXY` | `npmjs` | `registry.npmjs.org` | `/artifacts/npm/npmjs/…` and `/mirror/npm/npmjs/…` |
+| `MAVEN_PROXY` | `central` | `repo1.maven.org/maven2` | `/artifacts/maven/central/…` and `/mirror/maven/central/…` |
 | `OCI_MIRROR` | `hub`, `quay`, `redhat` | one `oci_mirror_upstream` row each | `/v2/<slug>/…` |
+
+**Why the npm and maven caches answer on two paths.** `/artifacts/*` is what the
+`qits-registries` jars mount, and what a CI step on `qits-net` dials
+(`http://dev-qits-platform-mirror:8080/artifacts/npm/npmjs/`). Through the public edge
+it is unreachable: the edge routes `/artifacts` to `qits-artifacts` on **every** vhost,
+so `https://mirror.<env>.<domain>/artifacts/npm/npmjs/left-pad` is answered by the
+registry — `404 no such npm repository 'npmjs'`. `/mirror` is this application's own
+route, so the same caches are also mounted under it (`qits.registries.{npm,maven}.mirror-mount`),
+and that is the path anything outside the swarm uses — a remote CI runner, a workstation.
+Both paths serve the same rows with the same handlers; neither is going away.
+
+npm has one wrinkle maven does not: a packument names its tarballs by **absolute** URL.
+The `qits-registries-npm` jar builds `dist.tarball` from the request, never from
+configuration — the scheme and host from `X-Forwarded-Proto` / `X-Forwarded-Host` (the
+edge sets both, keeping the authority the client dialled), or the authority this process
+was dialled on when there is no forwarding hop — plus the path the packument was asked
+on. So a document fetched at `https://mirror.qits.wohlben.eu/mirror/npm/npmjs/<pkg>`
+names `https://mirror.qits.wohlben.eu/mirror/npm/npmjs/<pkg>/-/<pkg>-<v>.tgz`, and one
+fetched in-network at `/artifacts/npm/npmjs/` names exactly what it always did.
+
+The registry a client outside the swarm sets is therefore
+
+    https://mirror.<env>.<domain>/mirror/npm/npmjs/
+
+and the vhost is gated, so npm needs a credential for it. npm sends `_authToken` as
+`Authorization: Bearer <token>`, and the edge accepts as a bearer either a platform JWT
+(audience `qits-platform`) or an opaque `qits_tok_…` token; `_auth` (base64 of
+`<id>:<secret>`) goes as `Authorization: Basic`, which the edge validates as an idp
+client id and secret. A remote CI runner uses the `qits_tok_` token it was issued. A
+person has no long-lived token of their own: a platform JWT works as `_authToken` until
+it expires, and an idp client id and secret is the long-lived choice.
+
+    registry=https://mirror.qits.wohlben.eu/mirror/npm/npmjs/
+    //mirror.qits.wohlben.eu/mirror/npm/npmjs/:_authToken=<qits_tok_… or a platform JWT>
+    # or, with a client id and secret instead:
+    # //mirror.qits.wohlben.eu/mirror/npm/npmjs/:_auth=<base64 of id:secret>
 
 Hosted publishing is not its job. The `qits-registries` modules carry both sides of
 each format because the two share a table and a set of routes, so the hosted
@@ -297,7 +333,9 @@ Readiness is at `/mirror/q/health/ready`.
 **The protocol routes do not follow that segment, and cannot.** Their prefixes are
 literals in the `qits-registries` jars, so this service answers npm and maven on
 the same `/artifacts/*` paths `qits-artifacts` does, and OCI at the host root like
-every registry. The per-service host is what settles that collision: those paths are
+every registry. npm and maven are *also* mounted under `/mirror` (see "Why the npm
+and maven caches answer on two paths" above), because the edge hands `/artifacts` to
+`qits-artifacts` whatever the host. The per-service host is what settles that collision: those paths are
 reached on `mirror.<env>.<domain>`, so no gateway entry has to choose between two
 services for `/artifacts/*`. Splitting the client configuration (npm scoped registries,
 dockerd `registry-mirrors`, the maven repositories list) is still the cutover phase's job.
