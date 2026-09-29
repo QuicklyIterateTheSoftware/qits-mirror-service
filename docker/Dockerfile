@@ -174,17 +174,30 @@ RUN --mount=type=secret,id=qits-client-id \
       echo "in src/main/webui first — this stage cannot, see the Quinoa flags above." >&2; \
       exit 1; }; \
     cp -a "$d" "$d.layer" && rm -rf "$d" && mv "$d.layer" "$d" && \
-    ./mvnw -B -ntp -s .qits-maven-settings.xml package -Dnative -DskipTests \
+    ./mvnw -B -ntp -s .qits-maven-settings.xml \
+      org.cyclonedx:cyclonedx-maven-plugin:2.9.1:makeBom \
+      -DoutputFormat=json -DoutputName=sbom -DschemaVersion=1.6 \
+      -Dcyclonedx.skipNotDeployed=false \
+      package -Dnative -DskipTests \
       -Dqits.maven.repository.url="$QITS_MAVEN_REPOSITORY_URL" \
       -Dquarkus.native.native-image-xmx=4g \
       -Dquarkus.quinoa.package-manager-install=true \
       -Dquarkus.quinoa.package-manager-install.node-version=22.22.0 \
       -Dquarkus.quinoa.package-manager-command.install=--version \
       -Dquarkus.quinoa.package-manager-command.ci=--version \
-      -Dquarkus.quinoa.package-manager-command.build=--version \
-      org.cyclonedx:cyclonedx-maven-plugin:2.9.1:makeBom \
-      -DoutputFormat=json -DoutputName=sbom -DschemaVersion=1.6 \
-      -Dcyclonedx.skipNotDeployed=false
+      -Dquarkus.quinoa.package-manager-command.build=--version
+# makeBom goes FIRST, BEFORE `package`, and the order is LOAD-BEARING (qits-441). Quinoa's node
+# install (package-manager-install=true, inside quarkus:build) runs the embedded frontend-plugin
+# `VertxFileDownloader`, whose first line is `System.setProperty("https.protocols", "TLSv1.2")` —
+# JVM-wide, for the rest of this Maven process. Every HTTPS connection Maven opens after it offers
+# TLS 1.2 only. The public edge (mirror.qits.wohlben.eu, which a remote runner's build resolves
+# Central through) speaks TLS 1.3 only, so each of those handshakes dies at once with `Received
+# fatal alert: protocol_version`, and makeBom's plugin dependencies — resolved lazily, when the
+# goal runs — fail as five "Failed to read artifact descriptor" lines with no HTTP status. The
+# in-network mirror is plain http:// and never notices, which is why only EDGE-plane runs failed.
+# Ahead of `package`, makeBom resolves before Quinoa has touched the property; the SBOM is the
+# same, since it reads the dependency graph and not the build's output.
+#
 # cyclonedx.skipNotDeployed=false is LOAD-BEARING, measured on qits-artifacts-service's first SBOM
 # release (2026.902.45658): a module that skips maven-deploy — this one does, it ships as this image
 # and not as a jar — is SKIPPED by the plugin by default, with a green build and one INFO line. The
