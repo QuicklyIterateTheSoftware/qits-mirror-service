@@ -30,7 +30,7 @@
          See the qits.auth-core.version property below. -->
     <groupId>eu.wohlben.qits</groupId>
     <artifactId>qits-platform-mirror</artifactId>
-    <version>2026.1002.211644</version>
+    <version>2026.1003.72110</version>
     <packaging>quarkus</packaging>
     <name>qits-platform-mirror</name>
 
@@ -42,8 +42,8 @@
              reactor now and ships on its version. The two pins must move together — the format jars
              are compiled against the store's classes, and the store's packages are
              eu.wohlben.qits.blobstore.* since this release. -->
-        <qits.blobstore.version>2026.1002.114042</qits.blobstore.version>
-        <qits.registries.version>2026.1002.114042</qits.registries.version>
+        <qits.blobstore.version>2026.1003.45700</qits.blobstore.version>
+        <qits.registries.version>2026.1003.45700</qits.registries.version>
         <!-- The platform's datasource resilience baseline: qits-db-core carries PatientPgDriver,
              which the datasource block in application.properties names, and qits-arch-rules carries
              the test that fails this build when a postgresql datasource is missing a line of that
@@ -69,9 +69,10 @@
              libs/qits-integrations-quarkus publishes all three, and the three move together. -->
         <qits.auth-core.version>2026.1002.70617</qits.auth-core.version>
         <!-- Where the two library repositories' jars come from when they are not in ~/.m2 — which
-             is every build that is not a developer's. The image build overrides it with the address
-             the platform's Maven repository answers on qits-net; see docker/Dockerfile. -->
-        <qits.maven.repository.url>http://registry.dev.localhost:8080/artifacts/maven/maven</qits.maven.repository.url>
+             is every build that is not a developer's. The default is the public host, which answers
+             401 without the commissioned client; the image build derives the same address from its
+             QITS_DOMAIN build arg; see docker/Dockerfile. -->
+        <qits.maven.repository.url>https://registry.qits.wohlben.eu/artifacts/maven/maven</qits.maven.repository.url>
 
         <maven.compiler.release>25</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
