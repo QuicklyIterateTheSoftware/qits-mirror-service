@@ -69,9 +69,10 @@
              libs/qits-integrations-quarkus publishes all three, and the three move together. -->
         <qits.auth-core.version>2026.1002.70617</qits.auth-core.version>
         <!-- Where the two library repositories' jars come from when they are not in ~/.m2 — which
-             is every build that is not a developer's. The image build overrides it with the address
-             the platform's Maven repository answers on qits-net; see docker/Dockerfile. -->
-        <qits.maven.repository.url>http://registry.dev.localhost:8080/artifacts/maven/maven</qits.maven.repository.url>
+             is every build that is not a developer's. The default is the public host, which answers
+             401 without the commissioned client; the image build derives the same address from its
+             QITS_DOMAIN build arg; see docker/Dockerfile. -->
+        <qits.maven.repository.url>https://registry.qits.wohlben.eu/artifacts/maven/maven</qits.maven.repository.url>
 
         <maven.compiler.release>25</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>

@@ -10,11 +10,11 @@ artifacts:
 userflows: qits-mirror
 
 # THE MIRROR MAY NOT BUILD THROUGH THE MIRROR. Both builds pass
-# `--opt build-arg:QITS_MAVEN_CENTRAL_URL=""` — a LITERAL empty string, not `${QITS_MAVEN_PROXY_URL:-}`
-# — which deactivates the settings profile so Central is dialled directly. The recipe passes the
-# proxy, which is this service itself: a deployment being replaced would be asked to proxy its own
-# replacement's build. The empty value is the off switch and it is the whole reason both slots are
-# here. The QA story step also wants 3600s rather than 2400 (the pull-through suites are slow).
+# `--opt build-arg:QITS_MAVEN_CENTRAL_URL=""` — a LITERAL empty string — which deactivates the
+# settings profile so Central is dialled directly. The proxy is this service itself: a deployment
+# being replaced would be asked to proxy its own replacement's build. The empty value is the off
+# switch and it is the whole reason both slots are here. The QA story step also wants 3600s rather
+# than 2400 (the pull-through suites are slow).
 release-request:
   - image: qits/build-images/node-docker-base:latest
     build: true
@@ -33,9 +33,14 @@ release-request:
           fi
         done
       fi
-      npm_hosted_origin=$(node -p 'new URL(process.env.QITS_NPM_REGISTRY_URL).origin')
-      npm_proxy_origin=$(node -p 'new URL(process.env.QITS_NPM_PROXY_URL).origin')
-      npm_hosted_path=$(node -p 'new URL(process.env.QITS_NPM_REGISTRY_URL).pathname')
+      # THE ADDRESSES ARE CODE (qits-731): the platform's public domain is the one input, and the
+      # hosts and paths below are constants — registry.qits.<domain> serves the hosted @qits scope,
+      # mirror.qits.<domain> the npmjs cache (THIS service). `wohlben.eu` covers a qits-ci too old to
+      # inject $QITS_DOMAIN.
+      qits_domain=${QITS_DOMAIN:-wohlben.eu}
+      npm_hosted_origin="https://registry.qits.$qits_domain"
+      npm_proxy_origin="https://mirror.qits.$qits_domain"
+      npm_hosted_path=/artifacts/npm/npm/
       for dir in $webui_dirs; do
         (
           cd "$dir"
@@ -45,15 +50,16 @@ release-request:
               -e "s#(\"resolved\": \")https?://[^/\"]+($npm_hosted_path)#\1$npm_hosted_origin\2#" \
               package-lock.json
           fi
-          env npm_config_registry="$QITS_NPM_PROXY_URL" \
-              "npm_config_@qits:registry=$QITS_NPM_REGISTRY_URL" \
+          env npm_config_registry="$npm_proxy_origin/npm/npmjs/" \
+              "npm_config_@qits:registry=$npm_hosted_origin$npm_hosted_path" \
               npm ci --no-audit --no-fund
           npm run build
         )
       done
       buildctl build --frontend dockerfile.v0 \
         --local context=. --local dockerfile=docker \
-        --opt build-arg:QITS_MAVEN_REPOSITORY_URL="$QITS_MAVEN_REGISTRY_URL" \
+        --opt build-arg:QITS_DOMAIN="$qits_domain" \
+        --opt build-arg:QITS_MAVEN_REPOSITORY_URL="https://registry.qits.$qits_domain/artifacts/maven/maven" \
         --opt build-arg:QITS_MAVEN_CENTRAL_URL="" \
         --secret id=qits-client-id,src=/tmp/qits-client-id \
         --secret id=qits-client-secret,src=/tmp/qits-client-secret
@@ -65,7 +71,8 @@ release-request:
     user: build
     timeout-seconds: 3600
     script: |
-      export QITS_MAVEN_REPOSITORY_URL="$QITS_MAVEN_REGISTRY_URL"
+      qits_domain=${QITS_DOMAIN:-wohlben.eu}
+      export QITS_MAVEN_REPOSITORY_URL="https://registry.qits.$qits_domain/artifacts/maven/maven"
       export QITS_MAVEN_CENTRAL_URL=""
       ./mvnw -B -ntp -s .qits-maven-settings.xml verify \
         -Dqits.maven.repository.url="$QITS_MAVEN_REPOSITORY_URL" \
@@ -89,7 +96,7 @@ release-request:
         -H "X-Artifacts-Meta-git.branch.name: $QITS_CI_BRANCH" \
         -H "X-Artifacts-Meta-git.commit.hash: $QITS_CI_SHA" \
         -H "X-Artifacts-Meta-git.repository.name: qits-mirror-platform-service" \
-        "$QITS_DOCS_URL/@userflows/qits-mirror-platform-service/-/$QITS_CI_SHA")
+        "https://registry.qits.$qits_domain/artifacts/docs/docs/@userflows/qits-mirror-platform-service/-/$QITS_CI_SHA")
       case "$status" in
         201) echo "published userflows@$QITS_CI_SHA ($QITS_CI_BRANCH)" ;;
         409) echo "userflows@$QITS_CI_SHA are already published — skipping" ;;
@@ -105,7 +112,11 @@ release:
         's/^[[:space:]]*-[[:space:]]*{[[:space:]]*type:[[:space:]]*docker[[:space:]]*,[[:space:]]*name:[[:space:]]*\([^,}[:space:]]*\).*/\1/p' \
         .config/qits/release.yml)
       image=${declared#*/}
-      ref="$QITS_BUILD_REGISTRY/$QITS_IMAGE_REPOSITORY/$image:$QITS_VERSION"
+      # The addresses are code under the platform's public domain (qits-731); `wohlben.eu` covers a
+      # qits-ci too old to inject $QITS_DOMAIN — which is the one that runs this file for the release
+      # that teaches qits-ci to inject it.
+      qits_domain=${QITS_DOMAIN:-wohlben.eu}
+      ref="registry.qits.$qits_domain/$QITS_IMAGE_REPOSITORY/$image:$QITS_VERSION"
       echo "releasing $ref"
 
       origin_parent="${QITS_CI_REPOSITORY_URL%/*}"
@@ -121,9 +132,9 @@ release:
           fi
         done
       fi
-      npm_hosted_origin=$(node -p 'new URL(process.env.QITS_NPM_REGISTRY_URL).origin')
-      npm_proxy_origin=$(node -p 'new URL(process.env.QITS_NPM_PROXY_URL).origin')
-      npm_hosted_path=$(node -p 'new URL(process.env.QITS_NPM_REGISTRY_URL).pathname')
+      npm_hosted_origin="https://registry.qits.$qits_domain"
+      npm_proxy_origin="https://mirror.qits.$qits_domain"
+      npm_hosted_path=/artifacts/npm/npm/
       for dir in $webui_dirs; do
         (
           cd "$dir"
@@ -133,8 +144,8 @@ release:
               -e "s#(\"resolved\": \")https?://[^/\"]+($npm_hosted_path)#\1$npm_hosted_origin\2#" \
               package-lock.json
           fi
-          env npm_config_registry="$QITS_NPM_PROXY_URL" \
-              "npm_config_@qits:registry=$QITS_NPM_REGISTRY_URL" \
+          env npm_config_registry="$npm_proxy_origin/npm/npmjs/" \
+              "npm_config_@qits:registry=$npm_hosted_origin$npm_hosted_path" \
               npm ci --no-audit --no-fund
           npm run build
         )
@@ -143,7 +154,8 @@ release:
       # BYTE-IDENTICAL TO THE QA BUILD ABOVE, EMPTY CENTRAL URL INCLUDED, plus the --output.
       buildctl build --frontend dockerfile.v0 \
         --local context=. --local dockerfile=docker \
-        --opt build-arg:QITS_MAVEN_REPOSITORY_URL="$QITS_MAVEN_REGISTRY_URL" \
+        --opt build-arg:QITS_DOMAIN="$qits_domain" \
+        --opt build-arg:QITS_MAVEN_REPOSITORY_URL="https://registry.qits.$qits_domain/artifacts/maven/maven" \
         --opt build-arg:QITS_MAVEN_CENTRAL_URL="" \
         --secret id=qits-client-id,src=/tmp/qits-client-id \
         --secret id=qits-client-secret,src=/tmp/qits-client-secret \
@@ -152,7 +164,8 @@ release:
       buildctl build --frontend dockerfile.v0 \
         --local context=. --local dockerfile=docker \
         --opt target=sbom \
-        --opt build-arg:QITS_MAVEN_REPOSITORY_URL="$QITS_MAVEN_REGISTRY_URL" \
+        --opt build-arg:QITS_DOMAIN="$qits_domain" \
+        --opt build-arg:QITS_MAVEN_REPOSITORY_URL="https://registry.qits.$qits_domain/artifacts/maven/maven" \
         --opt build-arg:QITS_MAVEN_CENTRAL_URL="" \
         --secret id=qits-client-id,src=/tmp/qits-client-id \
         --secret id=qits-client-secret,src=/tmp/qits-client-secret \

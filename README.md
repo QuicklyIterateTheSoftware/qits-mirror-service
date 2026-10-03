@@ -311,10 +311,11 @@ release-request phase of `.config/qits/release.yml` (composed from its archetype
 the same build — minus the push — against a release request's fold, `release/<id>`, as
 the build half of the QA run, whose every step gates. Both builds run through the
 PLATFORM BUILDER (`build: true` + buildctl — the wrapper's qits-buildkit-plan.md) with
-`--opt build-arg:QITS_MAVEN_REPOSITORY_URL=$QITS_MAVEN_REGISTRY_URL`, because `qits-blobstore` and
-the three `qits-registries` jars exist only in the platform's own Maven repository; a RUN executes
-on the platform network now, so the in-network address is the one that resolves. The old
-`--network host` doctrine retired with the host-daemon build.
+`--opt build-arg:QITS_MAVEN_REPOSITORY_URL=https://registry.qits.$QITS_DOMAIN/artifacts/maven/maven`,
+because `qits-blobstore` and the three `qits-registries` jars exist only in the platform's own Maven
+repository; the registry is a public host, reachable from a RUN step like any other address, but it
+answers 401 without the commissioned client the recipe also passes. The old `--network host`
+doctrine retired with the host-daemon build.
 
 **Both pipelines build the client before the image.** The step container sits on `qits-net`, where
 the platform's npm registry answers; a docker `RUN` reaches that registry by no address at all, so
