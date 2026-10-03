@@ -30,10 +30,10 @@ application: qits-mirror
 renamed_from: qits-platform-mirror
 
 # One route for this application's machine surface: the admin API at /mirror/api and health at
-# /mirror/q. The edge path-routes every application's route prefix on EVERY host, so this one line
-# keeps both reachable wherever a reader is. The client itself is no longer under it — it is served
-# at / on this application's own host. The three cache roots are not here either: they are reached on
-# this application's host directly.
+# /mirror/q. Both are reached on this application's own host, mirror.<domain> — the hostname picks
+# the application, and this line is what keeps the prefix reachable there. The client itself is no
+# longer under it — it is served at / on this application's own host. The three cache roots are not
+# here either: they are reached on this application's host directly.
 routes: /mirror
 
 # WHERE THIS APPLICATION HANGS IN THE SIDEBAR. `system` is the global group — this service is about

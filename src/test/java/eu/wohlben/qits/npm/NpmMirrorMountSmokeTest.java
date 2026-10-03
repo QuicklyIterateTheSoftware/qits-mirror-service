@@ -21,8 +21,9 @@ import org.junit.jupiter.api.Test;
 
 /**
  * The npm cache on its SECOND mount, {@code /npm} — at the root of this service's own hostname,
- * which is the one the edge reaches it on: the edge routes any path no other app claims to the
- * hostname's own app, and hands {@code /artifacts} to qits-artifacts on every vhost regardless.
+ * which is the one the edge reaches it on: the hostname alone picks the application, so every path
+ * on this service's own host is this service's own, including {@code /npm}; {@code /artifacts} is
+ * qits-artifacts' route on qits-artifacts' own host, not on this one.
  *
  * <p>What this adds over qits-registries-npm's {@code NpmMirrorMountTest} is this service's own
  * configuration: that the mount is switched on here, at the path the README and the client
