@@ -54,7 +54,7 @@ public class CacheEntriesResource {
    * @param path the entry exactly as the wire serves it, repository-relative
    */
   @DELETE
-  @RolesAllowed({"qits:admin", "qits:system"})
+  @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:system"})
   public MirrorEntryEviction.Evicted evict(
       @PathParam("repository") String repository, @QueryParam("path") String path) {
     return eviction.evict(repository, path);
