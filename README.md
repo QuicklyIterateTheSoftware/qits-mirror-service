@@ -96,7 +96,7 @@ back on the very next request — which is the whole difference from a collectio
 | `GET /mirror/api/repositories` | `{"repositories":[{name, type, upstream, createdAt}]}` — every cache root and what it fronts |
 | `GET /mirror/api/upstreams` | `{"upstreams":[{host, namespace, cachedImages, createdAt}]}` — every mirrored registry |
 | `GET /mirror/api/repositories/{repository}/packages` | what one root holds, folded into coordinates |
-| `DELETE /mirror/api/repositories/{repository}/entries?path=…` | evicts one cached entry; `{repository, path, kind, rowsRemoved}`. **The only guarded route here** — `qits:admin` or `qits:system`. `404` if nothing was cached there, `409` if the root is not a maven pull-through |
+| `DELETE /mirror/api/repositories/{repository}/entries?path=…` | evicts one cached entry; `{repository, path, kind, rowsRemoved}`. **The only guarded route here** — `qits:admin` or `qits:system` (`qits:admin-agent`, an ADMIN workspace's own agent, is admitted wherever `qits:admin` is — qits-628 follow-up). `404` if nothing was cached there, `409` if the root is not a maven pull-through |
 | `/` on `mirror.<env>.<domain>` | the Angular client (`src/main/webui`, the `qits-mirror-platform-frontend` submodule), built and served by Quinoa |
 
 `name` and `type` on a repository and `host` on an upstream are the fields the client

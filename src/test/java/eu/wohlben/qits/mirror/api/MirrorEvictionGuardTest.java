@@ -85,6 +85,31 @@ class MirrorEvictionGuardTest {
   }
 
   @Test
+  void anAdminWorkspaceAgentIsAdmittedButAPlainAgentIsNot() {
+    // qits:admin-agent is issued alongside qits:agent to an ADMIN workspace's own coding-agent
+    // container, and for now it is admitted everywhere qits:admin is (qits-628 follow-up).
+    given()
+        .header("X-Qits-User", "admin-workspace-agent")
+        .header("X-Qits-Roles", "qits:admin-agent")
+        .queryParam("path", SOME_ENTRY)
+        .when()
+        .delete(DOOR)
+        .then()
+        .statusCode(404);
+
+    // Plain qits:agent — an ordinary workspace's credential — is not this door's operator and is
+    // still refused.
+    given()
+        .header("X-Qits-User", "ordinary-agent")
+        .header("X-Qits-Roles", "qits:agent")
+        .queryParam("path", SOME_ENTRY)
+        .when()
+        .delete(DOOR)
+        .then()
+        .statusCode(403);
+  }
+
+  @Test
   void aMachineIsAdmittedToo() {
     // qits:system is the second half of the operator-door idiom: a repair job clears a poisoned
     // entry without a person, on the same route and with the same effect.
