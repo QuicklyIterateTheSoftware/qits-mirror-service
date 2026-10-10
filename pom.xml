@@ -71,6 +71,10 @@
         <!-- pact-jvm's JUnit 5 provider, for contracts/ConsumerPactVerificationTest: the version every
              provider on the estate verifies with, so a consumer's pact is read the same way. -->
         <pact.version>4.6.21</pact.version>
+        <!-- The consumer half of the contracts (ticket qits-1149): the golden-master reader, and the
+             qits-idp recordings contracts/IdpPactTest binds. Exact pins; the bump train moves them. -->
+        <qits.pact-consumer.version>2026.1010.140259</qits.pact-consumer.version>
+        <qits.idp-golden-masters.version>2026.1010.134259</qits.idp-golden-masters.version>
         <!-- Where the two library repositories' jars come from when they are not in ~/.m2 — which
              is every build that is not a developer's. The default is the public host, which answers
              401 without the commissioned client; the image build derives the same address from its
@@ -356,6 +360,19 @@
             <groupId>au.com.dius.pact.provider</groupId>
             <artifactId>junit5</artifactId>
             <version>${pact.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <!-- contracts/IdpPactTest: writes this repository's pact against qits-idp-service. -->
+            <groupId>eu.wohlben.qits</groupId>
+            <artifactId>qits-pact-consumer</artifactId>
+            <version>${qits.pact-consumer.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>eu.wohlben.qits</groupId>
+            <artifactId>qits-idp-golden-masters</artifactId>
+            <version>${qits.idp-golden-masters.version}</version>
             <scope>test</scope>
         </dependency>
         <dependency>
