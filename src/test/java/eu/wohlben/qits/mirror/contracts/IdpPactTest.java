@@ -37,7 +37,9 @@ class IdpPactTest {
 
   static final GoldenInteraction DISCOVERY =
       GoldenInteraction.of(Trigger.event("StartupEvent"), STATE, "getOpenIdConfiguration")
-          .consumes("issuer", "jwks_uri", "token_endpoint");
+          .consumes("issuer", "jwks_uri", "token_endpoint")
+          // quarkus-oidc compares each token's iss with this value, so a different string breaks us.
+          .exact("issuer");
 
   static final GoldenInteraction JWKS =
       GoldenInteraction.of(Trigger.event("StartupEvent"), STATE, "getJwks")

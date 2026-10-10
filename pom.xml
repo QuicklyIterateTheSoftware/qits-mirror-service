@@ -73,7 +73,7 @@
         <pact.version>4.6.21</pact.version>
         <!-- The consumer half of the contracts (ticket qits-1149): the golden-master reader, and the
              qits-idp recordings contracts/IdpPactTest binds. Exact pins; the bump train moves them. -->
-        <qits.pact-consumer.version>2026.1010.140259</qits.pact-consumer.version>
+        <qits.pact-consumer.version>2026.1010.141817</qits.pact-consumer.version>
         <qits.idp-golden-masters.version>2026.1010.134259</qits.idp-golden-masters.version>
         <!-- Where the two library repositories' jars come from when they are not in ~/.m2 — which
              is every build that is not a developer's. The default is the public host, which answers
