@@ -68,6 +68,9 @@
              Same pin as qits-db-core and qits-arch-rules above — one release of
              libs/qits-integrations-quarkus publishes all three, and the three move together. -->
         <qits.auth-core.version>2026.1002.70617</qits.auth-core.version>
+        <!-- pact-jvm's JUnit 5 provider, for contracts/ConsumerPactVerificationTest: the version every
+             provider on the estate verifies with, so a consumer's pact is read the same way. -->
+        <pact.version>4.6.21</pact.version>
         <!-- Where the two library repositories' jars come from when they are not in ~/.m2 — which
              is every build that is not a developer's. The default is the public host, which answers
              401 without the commissioned client; the image build derives the same address from its
@@ -345,6 +348,14 @@
         <dependency>
             <groupId>io.rest-assured</groupId>
             <artifactId>rest-assured</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <!-- contracts/ConsumerPactVerificationTest: verifies the consumer pacts this provider
+                 pins. -->
+            <groupId>au.com.dius.pact.provider</groupId>
+            <artifactId>junit5</artifactId>
+            <version>${pact.version}</version>
             <scope>test</scope>
         </dependency>
         <dependency>
