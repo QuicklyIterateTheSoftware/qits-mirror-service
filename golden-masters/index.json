@@ -1,0 +1,72 @@
+{
+  "formatVersion": 1,
+  "provider": "qits-mirror",
+  "states": [
+    {
+      "name": "an npm cache holding a package",
+      "slug": "an-npm-cache-holding-a-package",
+      "params": {
+        "repository": "npmjs"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "listRepositoryPackages",
+          "method": "GET",
+          "path": "/mirror/api/repositories/{repository}/packages",
+          "status": 200,
+          "file": "an-npm-cache-holding-a-package/listRepositoryPackages.json",
+          "frozen": {
+            "ids": [],
+            "instants": [
+              "$.repository.createdAt",
+              "$.packages[*].versions[*].cachedAt",
+              "$.packages[*].versions[*].lastAccessedAt",
+              "$.packages[*].lastAccessedAt"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "the default caches",
+      "slug": "the-default-caches",
+      "params": {},
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "listRepositories",
+          "method": "GET",
+          "path": "/mirror/api/repositories",
+          "status": 200,
+          "file": "the-default-caches/listRepositories.json",
+          "frozen": {
+            "ids": [],
+            "instants": [
+              "$.repositories[*].createdAt"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listUpstreams",
+          "method": "GET",
+          "path": "/mirror/api/upstreams",
+          "status": 200,
+          "file": "the-default-caches/listUpstreams.json",
+          "frozen": {
+            "ids": [],
+            "instants": [
+              "$.upstreams[*].createdAt"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    }
+  ]
+}

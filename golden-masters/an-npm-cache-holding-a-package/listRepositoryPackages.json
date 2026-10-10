@@ -1,0 +1,27 @@
+{
+  "repository": {
+    "name": "npmjs",
+    "type": "npm-proxy",
+    "upstream": "https://registry.npmjs.org",
+    "createdAt": "2026-01-01T00:00:00Z"
+  },
+  "packages": [
+    {
+      "name": "left-pad",
+      "versions": [
+        {
+          "version": "1.3.0",
+          "labels": [
+            "latest"
+          ],
+          "files": [],
+          "sizeBytes": 70,
+          "cachedAt": "2026-01-01T00:00:00Z",
+          "lastAccessedAt": "2026-01-01T00:00:00Z"
+        }
+      ],
+      "sizeBytes": 70,
+      "lastAccessedAt": "2026-01-01T00:00:00Z"
+    }
+  ]
+}

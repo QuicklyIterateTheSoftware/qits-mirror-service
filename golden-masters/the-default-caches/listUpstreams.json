@@ -1,0 +1,22 @@
+{
+  "upstreams": [
+    {
+      "host": "docker.io",
+      "namespace": "hub",
+      "cachedImages": 0,
+      "createdAt": "2026-01-01T00:00:00Z"
+    },
+    {
+      "host": "quay.io",
+      "namespace": "quay",
+      "cachedImages": 0,
+      "createdAt": "2026-01-01T00:00:00Z"
+    },
+    {
+      "host": "registry.access.redhat.com",
+      "namespace": "redhat",
+      "cachedImages": 0,
+      "createdAt": "2026-01-01T00:00:00Z"
+    }
+  ]
+}

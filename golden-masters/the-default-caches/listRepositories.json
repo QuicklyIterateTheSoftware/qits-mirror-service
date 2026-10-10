@@ -1,0 +1,34 @@
+{
+  "repositories": [
+    {
+      "name": "central",
+      "type": "maven-proxy",
+      "upstream": "https://repo1.maven.org/maven2",
+      "createdAt": "2026-01-01T00:00:00Z"
+    },
+    {
+      "name": "hub",
+      "type": "oci-mirror",
+      "upstream": "docker.io",
+      "createdAt": "2026-01-01T00:00:00Z"
+    },
+    {
+      "name": "npmjs",
+      "type": "npm-proxy",
+      "upstream": "https://registry.npmjs.org",
+      "createdAt": "2026-01-01T00:00:00Z"
+    },
+    {
+      "name": "quay",
+      "type": "oci-mirror",
+      "upstream": "quay.io",
+      "createdAt": "2026-01-01T00:00:00Z"
+    },
+    {
+      "name": "redhat",
+      "type": "oci-mirror",
+      "upstream": "registry.access.redhat.com",
+      "createdAt": "2026-01-01T00:00:00Z"
+    }
+  ]
+}
