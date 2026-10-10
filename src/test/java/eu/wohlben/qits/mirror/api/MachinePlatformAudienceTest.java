@@ -17,13 +17,13 @@ import org.junit.jupiter.api.Test;
 
 /**
  * The audience this service answers to is the platform's one machine audience, {@code
- * qits-platform}: qits-platform-idp puts it on every token it mints, so a caller addressed to it —
+ * qits-platform}: qits-idp puts it on every token it mints, so a caller addressed to it —
  * which is every caller there is — passes this service's OIDC check, and a token from anywhere else
  * does not.
  *
  * <p>This is the first test in the repository that turns the machine gate ON. The README says the
  * rollout gate stays off in normal operation, so no in-repo pattern exists to follow for a real
- * bearer token; this test brings its own signing key rather than a running qits-platform-idp, using
+ * bearer token; this test brings its own signing key rather than a running qits-idp, using
  * {@code quarkus.oidc.public-key} — a fixed key validated with no network call and no JWKS fetch,
  * which is what keeps this test clone-alone like the rest of the suite.
  */
@@ -65,8 +65,8 @@ class MachinePlatformAudienceTest {
           "qits.auth.forward.dev-user", "",
           // BLANKED, NOT JUST THE PUBLIC KEY ADDED: quarkus-oidc only takes the fully offline path
           // (no HTTP client, no connection attempt at all) when auth-server-url is ALSO absent —
-          // with it set, the shipped jwks-path still makes it build a remote client and try to
-          // reach qits-platform-idp, so every request 503s "retry" against an idp this test never
+          // with it set, discovery still makes it build a remote client and try to
+          // reach qits-idp, so every request 503s "retry" against an idp this test never
           // starts. Blanking the url is what selects the local-key-only path.
           "quarkus.oidc.auth-server-url", "");
     }
