@@ -68,6 +68,10 @@
              Same pin as qits-db-core and qits-arch-rules above — one release of
              libs/qits-integrations-quarkus publishes all three, and the three move together. -->
         <qits.auth-core.version>2026.1002.70617</qits.auth-core.version>
+        <!-- CallerServerFilter/CallerClientFilter: jandex-indexed filters that record inbound
+             X-Qits-Caller as the qits.caller span attribute and stamp it on outgoing REST-client
+             calls. Also published by qits-integrations-quarkus. -->
+        <qits.http-core.version>0-qits-1198-local</qits.http-core.version>
         <!-- pact-jvm's JUnit 5 provider, for contracts/ConsumerPactVerificationTest: the version every
              provider on the estate verifies with, so a consumer's pact is read the same way. -->
         <pact.version>4.6.21</pact.version>
@@ -309,6 +313,15 @@
             <groupId>${project.groupId}</groupId>
             <artifactId>qits-auth-core</artifactId>
             <version>${qits.auth-core.version}</version>
+        </dependency>
+        <dependency>
+            <!-- CallerServerFilter: jandex-indexed, so merely being on this deployable's classpath
+                 records inbound X-Qits-Caller as the qits.caller span attribute. This service
+                 builds no HttpClient of its own in main sources, so nothing here calls
+                 QitsHttpClients.wrap. -->
+            <groupId>${project.groupId}</groupId>
+            <artifactId>qits-http-core</artifactId>
+            <version>${qits.http-core.version}</version>
         </dependency>
         <dependency>
             <!-- The MACHINE half of the operator-door idiom, and it does NOT arrive with
