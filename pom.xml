@@ -42,8 +42,8 @@
              reactor now and ships on its version. The two pins must move together — the format jars
              are compiled against the store's classes, and the store's packages are
              eu.wohlben.qits.blobstore.* since this release. -->
-        <qits.blobstore.version>2026.1011.202808</qits.blobstore.version>
-        <qits.registries.version>2026.1011.202808</qits.registries.version>
+        <qits.blobstore.version>2026.1014.224111</qits.blobstore.version>
+        <qits.registries.version>2026.1014.224111</qits.registries.version>
         <!-- The platform's datasource resilience baseline: qits-db-core carries PatientPgDriver,
              which the datasource block in application.properties names, and qits-arch-rules carries
              the test that fails this build when a postgresql datasource is missing a line of that
@@ -71,14 +71,14 @@
         <!-- CallerServerFilter/CallerClientFilter: jandex-indexed filters that record inbound
              X-Qits-Caller as the qits.caller span attribute and stamp it on outgoing REST-client
              calls. Also published by qits-integrations-quarkus. -->
-        <qits.http-core.version>2026.1012.153509</qits.http-core.version>
+        <qits.http-core.version>2026.1013.64811</qits.http-core.version>
         <!-- pact-jvm's JUnit 5 provider, for contracts/ConsumerPactVerificationTest: the version every
              provider on the estate verifies with, so a consumer's pact is read the same way. -->
         <pact.version>4.6.21</pact.version>
         <!-- The consumer half of the contracts (ticket qits-1149): the golden-master reader, and the
              qits-idp recordings contracts/IdpPactTest binds. Exact pins; the bump train moves them. -->
         <qits.pact-consumer.version>2026.1010.141817</qits.pact-consumer.version>
-        <qits.idp-golden-masters.version>2026.1010.134259</qits.idp-golden-masters.version>
+        <qits.idp-golden-masters.version>2026.1012.180836</qits.idp-golden-masters.version>
         <!-- Where the two library repositories' jars come from when they are not in ~/.m2 — which
              is every build that is not a developer's. The default is the public host, which answers
              401 without the commissioned client; the image build derives the same address from its
