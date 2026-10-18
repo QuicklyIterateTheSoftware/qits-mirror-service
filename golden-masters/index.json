@@ -3,6 +3,60 @@
   "provider": "qits-mirror",
   "states": [
     {
+      "name": "a cached maven artifact with published versions",
+      "slug": "a-cached-maven-artifact-with-published-versions",
+      "params": {
+        "artifact": "contract-library",
+        "groupPath": "org/example",
+        "name": "org.example:contract-library"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "getMavenMetadata",
+          "method": "GET",
+          "path": "/artifacts/maven/central/{groupPath}/{artifact}/maven-metadata.xml",
+          "status": 200,
+          "headers": {
+            "Content-Type": "application/xml; charset=utf-8"
+          },
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "a cached npm package with published versions",
+      "slug": "a-cached-npm-package-with-published-versions",
+      "params": {
+        "name": "contract-package",
+        "package": "contract-package"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "getNpmPackument",
+          "method": "GET",
+          "path": "/npm/npmjs/{package}",
+          "status": 200,
+          "file": "a-cached-npm-package-with-published-versions/getNpmPackument.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "volatile": [
+              "$.versions[*].dist.tarball"
+            ],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
       "name": "an npm cache holding a package",
       "slug": "an-npm-cache-holding-a-package",
       "params": {
@@ -24,6 +78,53 @@
               "$.packages[*].versions[*].lastAccessedAt",
               "$.packages[*].lastAccessedAt"
             ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "no maven artifact of that name upstream",
+      "slug": "no-maven-artifact-of-that-name-upstream",
+      "params": {
+        "artifact": "contract-absent",
+        "groupPath": "org/example",
+        "name": "org.example:contract-absent"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "getMavenMetadata",
+          "method": "GET",
+          "path": "/artifacts/maven/central/{groupPath}/{artifact}/maven-metadata.xml",
+          "status": 404,
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "no npm package of that name upstream",
+      "slug": "no-npm-package-of-that-name-upstream",
+      "params": {
+        "name": "contract-absent-package",
+        "package": "contract-absent-package"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "getNpmPackument",
+          "method": "GET",
+          "path": "/npm/npmjs/{package}",
+          "status": 404,
+          "frozen": {
+            "ids": [],
+            "instants": [],
             "strings": [],
             "listFilteredTo": null
           }
