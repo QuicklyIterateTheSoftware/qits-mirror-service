@@ -119,12 +119,13 @@ final class StubNpmRegistry {
     String latest = null;
     for (TinyPackage version : versions) {
       Map<String, Object> manifest = new LinkedHashMap<>(version.manifest());
-      manifest.put(
-          "dist",
-          Map.of(
-              "tarball", baseUrl + "/" + name + "/-/" + version.tarballFile(),
-              "shasum", version.shasum(),
-              "integrity", version.integrity()));
+      // Ordered, not Map.of: Map.of's iteration order changes per JVM, and the provider contract
+      // records this document byte for byte.
+      Map<String, Object> dist = new LinkedHashMap<>();
+      dist.put("tarball", baseUrl + "/" + name + "/-/" + version.tarballFile());
+      dist.put("shasum", version.shasum());
+      dist.put("integrity", version.integrity());
+      manifest.put("dist", dist);
       versionsNode.put(version.version(), manifest);
       control(
           "tarball", Map.of("X-Path", name + "/-/" + version.tarballFile()), version.tarball());

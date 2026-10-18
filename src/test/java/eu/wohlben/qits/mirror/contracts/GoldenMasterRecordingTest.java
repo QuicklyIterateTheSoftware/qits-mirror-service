@@ -41,7 +41,22 @@ import org.junit.jupiter.api.Test;
  *
  * <p><b>Instants are frozen.</b> A cache root's {@code createdAt} is the time Flyway or the seeder
  * wrote it, so every string value shaped like an ISO-8601 instant becomes {@value #FROZEN_INSTANT}
- * and its path goes in the index's {@code frozen.instants}. Nothing else varies between runs.
+ * and its path goes in the index's {@code frozen.instants}.
+ *
+ * <p><b>Not every answer is a JSON document</b>, and the format says so the way qits-artifacts'
+ * recorder does:
+ *
+ * <ul>
+ *   <li>{@code file} — only when the answer is a JSON document. A {@code maven-metadata.xml} (XML)
+ *       and a 404 record no file: the status, and {@code headers}, are the whole answer. The
+ *       consumer helper binds JSON paths only, so an XML body could not be bound if it were here.
+ *   <li>{@code headers} — the response headers a consumer reads ({@code Content-Type}).
+ *   <li>{@code frozen.volatile} — the paths whose value depends on the request rather than on the
+ *       state: a packument's {@code dist.tarball} is rewritten to the asking host, which is a random
+ *       port here. The recording holds {@code ""} there; a consumer matches it by type.
+ * </ul>
+ *
+ * <p>Nothing else varies between runs.
  *
  * <p>It <b>compares by default</b> and fails with a unified diff per differing file — including a
  * committed {@code .json} no interaction produces any more. {@code -Dgolden.update=true} (or {@code
@@ -66,7 +81,40 @@ class GoldenMasterRecordingTest {
    * One recorded interaction. {@code path} is the template; {@code {name}} segments are filled from
    * the state's params.
    */
-  record Interaction(String state, String operationId, String method, String path, int status) {}
+  record Interaction(
+      String state,
+      String operationId,
+      String method,
+      String path,
+      int status,
+      boolean recordsAnswer,
+      List<String> headers,
+      List<String> blanked) {
+
+    /** A JSON answer, recorded whole. */
+    Interaction(String state, String operationId, String method, String path, int status) {
+      this(state, operationId, method, path, status, true, List.of(), List.of());
+    }
+
+    /** Not a JSON document: the status and these headers are the answer. */
+    static Interaction statusOnly(
+        String state, String operationId, String path, int status, String... headers) {
+      return new Interaction(state, operationId, "GET", path, status, false, List.of(headers), List.of());
+    }
+
+    /** A JSON answer whose strings at {@code blanked} depend on the request and record as "". */
+    Interaction blanking(String... paths) {
+      return new Interaction(
+          state, operationId, method, path, status, recordsAnswer, headers, List.of(paths));
+    }
+  }
+
+  /** {@code GET /artifacts/maven/central/...}: the Central cache, where qits-maintenance reads it. */
+  static final String MAVEN_METADATA =
+      "/artifacts/maven/central/{groupPath}/{artifact}/maven-metadata.xml";
+
+  /** {@code GET /npm/npmjs/<package>}: the npmjs cache on the mount qits-maintenance derives. */
+  static final String NPM_PACKUMENT = "/npm/npmjs/{package}";
 
   /**
    * The service publishes no OpenAPI document, so the operation ids are this table's. Renaming one
@@ -91,7 +139,21 @@ class GoldenMasterRecordingTest {
               "listRepositoryPackages",
               "GET",
               "/mirror/api/repositories/{repository}/packages",
-              200));
+              200),
+          // The caches, as qits-maintenance's LatestResolver reads them for an EXTERNAL pin.
+          Interaction.statusOnly(
+              ProviderStates.A_CACHED_MAVEN_ARTIFACT,
+              "getMavenMetadata",
+              MAVEN_METADATA,
+              200,
+              "Content-Type"),
+          Interaction.statusOnly(
+              ProviderStates.NO_MAVEN_ARTIFACT_UPSTREAM, "getMavenMetadata", MAVEN_METADATA, 404),
+          new Interaction(
+                  ProviderStates.A_CACHED_NPM_PACKAGE, "getNpmPackument", "GET", NPM_PACKUMENT, 200)
+              .blanking("$.versions[*].dist.tarball"),
+          Interaction.statusOnly(
+              ProviderStates.NO_NPM_PACKAGE_UPSTREAM, "getNpmPackument", NPM_PACKUMENT, 404));
 
   private static final ObjectMapper JSON = new ObjectMapper();
 
@@ -112,9 +174,18 @@ class GoldenMasterRecordingTest {
 
     for (Interaction interaction : INTERACTIONS) {
       Map<String, String> params = states.params(interaction.state());
-      JsonNode body = call(interaction, params);
+      HttpResponse<String> response = call(interaction, params);
       Set<String> instants = new LinkedHashSet<>();
-      body = freeze(body, "$", instants);
+      JsonNode body = null;
+      if (interaction.recordsAnswer()) {
+        body = JSON.readTree(response.body());
+        for (String blanked : interaction.blanked()) {
+          if (blank(body, blanked.substring(2).split("\\."), 0) == 0) {
+            failures.add(blanked + " names no string in the " + interaction.operationId() + " answer");
+          }
+        }
+        body = freeze(body, "$", instants);
+      }
       String slug = ProviderStates.slug(interaction.state());
       String file = slug + "/" + interaction.operationId() + ".json";
 
@@ -137,12 +208,29 @@ class GoldenMasterRecordingTest {
       operation.put("method", interaction.method());
       operation.put("path", interaction.path());
       operation.put("status", interaction.status());
-      operation.put("file", file);
+      if (interaction.recordsAnswer()) {
+        operation.put("file", file);
+      }
+      if (!interaction.headers().isEmpty()) {
+        ObjectNode headers = operation.putObject("headers");
+        for (String name : interaction.headers()) {
+          headers.put(
+              name,
+              response
+                  .headers()
+                  .firstValue(name)
+                  .orElseThrow(() -> new AssertionError(file + " answered no " + name)));
+        }
+      }
       ObjectNode frozen = operation.putObject("frozen");
       frozen.putArray("ids");
       ArrayNode instantPaths = frozen.putArray("instants");
       instants.forEach(instantPaths::add);
       frozen.putArray("strings");
+      if (!interaction.blanked().isEmpty()) {
+        ArrayNode volatilePaths = frozen.putArray("volatile");
+        interaction.blanked().forEach(volatilePaths::add);
+      }
       frozen.putNull("listFilteredTo");
       if (indexOperations
               .computeIfAbsent(slug, k -> new TreeMap<>())
@@ -151,8 +239,10 @@ class GoldenMasterRecordingTest {
         failures.add("Duplicate interaction " + file);
       }
 
-      written.add(file);
-      check(dir.resolve(file), GoldenJson.render(body), update, failures);
+      if (interaction.recordsAnswer()) {
+        written.add(file);
+        check(dir.resolve(file), GoldenJson.render(body), update, failures);
+      }
     }
 
     ObjectNode index = JsonNodeFactory.instance.objectNode();
@@ -188,7 +278,7 @@ class GoldenMasterRecordingTest {
   }
 
   /** The operation's answer, with the path's {@code {name}} segments filled from the params. */
-  private JsonNode call(Interaction interaction, Map<String, String> params) throws Exception {
+  private HttpResponse<String> call(Interaction interaction, Map<String, String> params) throws Exception {
     String path = interaction.path();
     for (Map.Entry<String, String> param : params.entrySet()) {
       path = path.replace("{" + param.getKey() + "}", param.getValue());
@@ -216,7 +306,40 @@ class GoldenMasterRecordingTest {
               + ": "
               + response.body());
     }
-    return JSON.readTree(response.body());
+    return response;
+  }
+
+  /**
+   * Sets the strings at {@code segments} (from {@code at} on) to {@code ""}; a segment ending in
+   * {@code [*]} names every member of that object or element of that array (a packument's {@code
+   * versions}, keyed by version). Answers how many it set — qits-artifacts' rule, unchanged.
+   */
+  static int blank(JsonNode node, String[] segments, int at) {
+    String segment = segments[at];
+    boolean each = segment.endsWith("[*]");
+    String key = each ? segment.substring(0, segment.length() - 3) : segment;
+    if (!(node instanceof ObjectNode object) || !object.has(key)) {
+      return 0;
+    }
+    JsonNode child = object.get(key);
+    boolean last = at == segments.length - 1;
+    if (!each) {
+      if (last) {
+        if (!child.isTextual()) {
+          return 0;
+        }
+        object.put(key, "");
+        return 1;
+      }
+      return blank(child, segments, at + 1);
+    }
+    List<JsonNode> members = new ArrayList<>();
+    child.elements().forEachRemaining(members::add);
+    int set = 0;
+    for (JsonNode member : members) {
+      set += last ? 0 : blank(member, segments, at + 1);
+    }
+    return set;
   }
 
   /**

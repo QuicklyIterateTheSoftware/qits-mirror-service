@@ -1,0 +1,34 @@
+{
+  "_id": "contract-package",
+  "name": "contract-package",
+  "dist-tags": {
+    "latest": "1.1.0"
+  },
+  "versions": {
+    "1.0.0": {
+      "name": "contract-package",
+      "version": "1.0.0",
+      "description": "a synthetic package for contract-package",
+      "main": "index.js",
+      "license": "MIT",
+      "dist": {
+        "tarball": "",
+        "shasum": "eea7afb0e52f0a777189b5b57d594ea7e1be3259",
+        "integrity": "sha512-BAVU7ugFkQMv0Fyqmm3KYabx175+CeM8DVOhxi9PEG1wAgLVEmqhKogYfU9v7XnzHEWsp7O8xqQdz5LzewsjHQ=="
+      }
+    },
+    "1.1.0": {
+      "name": "contract-package",
+      "version": "1.1.0",
+      "description": "a synthetic package for contract-package",
+      "main": "index.js",
+      "license": "MIT",
+      "dist": {
+        "tarball": "",
+        "shasum": "a1cf29c74cdd31b20a1a667000e81a859192feb9",
+        "integrity": "sha512-d5Di94QUbKNryqtiLVSOUl2Hh7PFDajyKGkDqiOJ9r2MADuxNqDXcfhDpfc380WMxqsR44FyCHKrzM7I19UZIQ=="
+      }
+    }
+  },
+  "_upstream": "stub"
+}

@@ -32,7 +32,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
  * pins that jar as a test dependency, and qits-maintenance bumps the pin when the consumer releases
  * a changed pact. {@link ClasspathPactLoader} finds them all.
  *
- * <p><b>No consumer pins a pact yet</b> (the expected one is qits-mirror-frontend), so {@code
+ * <p><b>No consumer pins a pact yet</b> (the expected ones are qits-maintenance-service, reading the
+ * caches for an external pin, and qits-mirror-frontend), so {@code
  * @IgnoreNoPactsToVerify} lets an empty classpath pass and the loader logs that nothing was
  * verified. When the first consumer's pact jar is pinned, drop the annotation and set {@link
  * ClasspathPactLoader#REQUIRED} to true.
@@ -114,5 +115,25 @@ class ConsumerPactVerificationTest {
   @State(ProviderStates.AN_NPM_CACHE_HOLDING_A_PACKAGE)
   Map<String, String> anNpmCacheHoldingAPackage() {
     return states.params(ProviderStates.AN_NPM_CACHE_HOLDING_A_PACKAGE);
+  }
+
+  @State(ProviderStates.A_CACHED_MAVEN_ARTIFACT)
+  Map<String, String> aCachedMavenArtifact() {
+    return states.params(ProviderStates.A_CACHED_MAVEN_ARTIFACT);
+  }
+
+  @State(ProviderStates.A_CACHED_NPM_PACKAGE)
+  Map<String, String> aCachedNpmPackage() {
+    return states.params(ProviderStates.A_CACHED_NPM_PACKAGE);
+  }
+
+  @State(ProviderStates.NO_MAVEN_ARTIFACT_UPSTREAM)
+  Map<String, String> noMavenArtifactUpstream() {
+    return states.params(ProviderStates.NO_MAVEN_ARTIFACT_UPSTREAM);
+  }
+
+  @State(ProviderStates.NO_NPM_PACKAGE_UPSTREAM)
+  Map<String, String> noNpmPackageUpstream() {
+    return states.params(ProviderStates.NO_NPM_PACKAGE_UPSTREAM);
   }
 }
