@@ -75,6 +75,10 @@
         <!-- pact-jvm's JUnit 5 provider, for contracts/ConsumerPactVerificationTest: the version every
              provider on the estate verifies with, so a consumer's pact is read the same way. -->
         <pact.version>4.6.21</pact.version>
+        <!-- THE PROVIDER HALF (ticket qits-1149): every published
+             `eu.wohlben.qits:<consumer>-pacts-qits-mirror-service` jar whose consumer commits
+             `pacts/<consumer>_qits-mirror-service.json`. Exact pins; qits-maintenance bumps them. -->
+        <qits.maintenance-service-pacts-qits-mirror-service.version>2026.1019.73752</qits.maintenance-service-pacts-qits-mirror-service.version>
         <!-- The consumer half of the contracts (ticket qits-1149): the golden-master reader, and the
              qits-idp recordings contracts/IdpPactTest binds. Exact pins; the bump train moves them. -->
         <qits.pact-consumer.version>2026.1019.82625</qits.pact-consumer.version>
@@ -373,6 +377,14 @@
             <groupId>au.com.dius.pact.provider</groupId>
             <artifactId>junit5</artifactId>
             <version>${pact.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <!-- qits-maintenance-service's pact against this provider: its ScanService reading a
+                 cached artifact's maven-metadata.xml and an npm packument (ticket qits-1149). -->
+            <groupId>eu.wohlben.qits</groupId>
+            <artifactId>qits-maintenance-service-pacts-qits-mirror-service</artifactId>
+            <version>${qits.maintenance-service-pacts-qits-mirror-service.version}</version>
             <scope>test</scope>
         </dependency>
         <dependency>

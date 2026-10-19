@@ -8,7 +8,6 @@ import au.com.dius.pact.core.model.ProviderState;
 import au.com.dius.pact.provider.junit5.HttpTestTarget;
 import au.com.dius.pact.provider.junit5.PactVerificationContext;
 import au.com.dius.pact.provider.junit5.PactVerificationInvocationContextProvider;
-import au.com.dius.pact.provider.junitsupport.IgnoreNoPactsToVerify;
 import au.com.dius.pact.provider.junitsupport.Provider;
 import au.com.dius.pact.provider.junitsupport.State;
 import au.com.dius.pact.provider.junitsupport.loader.PactSource;
@@ -32,11 +31,14 @@ import org.junit.jupiter.api.extension.ExtendWith;
  * pins that jar as a test dependency, and qits-maintenance bumps the pin when the consumer releases
  * a changed pact. {@link ClasspathPactLoader} finds them all.
  *
- * <p><b>No consumer pins a pact yet</b> (the expected ones are qits-maintenance-service, reading the
- * caches for an external pin, and qits-mirror-frontend), so {@code
- * @IgnoreNoPactsToVerify} lets an empty classpath pass and the loader logs that nothing was
- * verified. When the first consumer's pact jar is pinned, drop the annotation and set {@link
- * ClasspathPactLoader#REQUIRED} to true.
+ * <p><b>One consumer pins a pact</b> (qits-1149): qits-maintenance-service ({@code
+ * eu.wohlben.qits:qits-maintenance-service-pacts-qits-mirror-service}, test-scoped in the pom) —
+ * its ScanService reading a cached maven artifact's {@code maven-metadata.xml} and an npm
+ * packument, each with versions and absent upstream. So this class carries no {@code
+ * @IgnoreNoPactsToVerify} and {@link ClasspathPactLoader#REQUIRED} is true: a classpath that lost
+ * the pin fails rather than verifying nothing. A new consumer's jar is pinned beside it, and any
+ * state its pact names that {@link ProviderStates} does not answer is added there with its golden
+ * master.
  *
  * <p>Each interaction runs against this {@code @QuarkusTest} application over real HTTP,
  * unauthenticated: the listings are open. Every {@code @State} method delegates to {@link
@@ -47,7 +49,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 @TestProfile(ContractProfile.class)
 @Provider(ConsumerPactVerificationTest.PROVIDER)
 @PactSource(ClasspathPactLoader.class)
-@IgnoreNoPactsToVerify
 class ConsumerPactVerificationTest {
 
   /** The provider's name in a pact: the repository name, not the application name. */
@@ -65,9 +66,6 @@ class ConsumerPactVerificationTest {
 
   @BeforeEach
   void target(PactVerificationContext context, Pact pact, Interaction interaction) {
-    if (context == null) {
-      return; // no pact to verify: @IgnoreNoPactsToVerify's single empty run
-    }
     String consumer = pact.getConsumer().getName();
     for (ProviderState state : interaction.getProviderStates()) {
       if (!states.names().contains(state.getName())) {
@@ -100,9 +98,7 @@ class ConsumerPactVerificationTest {
   @TestTemplate
   @ExtendWith(PactVerificationInvocationContextProvider.class)
   void consumerPactHolds(PactVerificationContext context) {
-    if (context != null) {
-      context.verifyInteraction();
-    }
+    context.verifyInteraction();
   }
 
   // --- the states: each one line into the registry -------------------------------------------
