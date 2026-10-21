@@ -94,3 +94,13 @@ health_path: /mirror/q/health/ready
 # aliases in that window, and every CI build dialling it then went red (qits-581). The old reason —
 # a published host port — is gone: live `ports: None`, and nothing in the deployer's extras or the
 # bootstrap ComposeTemplate publishes one.
+
+# qits-1170: how long swarm lets the predecessor task keep running after SIGTERM before SIGKILL.
+# The old task is pulled from the load balancer and gets no new connections the moment SIGTERM
+# lands, so this grace buys nothing for new traffic — it only lets whatever is already in flight
+# finish: a maven jar or an OCI layer still streaming to a build. A cold pull-through can run long
+# (quarkus.vertx.max-worker-execute-time=PT30M upstream), so a short grace cuts those downloads
+# exactly as a missing one would; 10m is comfortably above that ceiling. application.properties'
+# quarkus.shutdown.timeout sits just under this value, not above it, so Quarkus closes the drain on
+# its own terms before swarm forces the issue.
+stop_grace_period: 10m
