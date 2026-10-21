@@ -361,6 +361,10 @@ jar, an OCI layer — is allowed up to `quarkus.shutdown.timeout=570s` to finish
 `stop_grace_period: 10m` that `.config/qits/deployments.yml` hands the deployer for
 `--stop-grace-period`. Keep the two in step: a timeout at or over the grace is SIGKILL
 mid-transfer, which is what 25s inside a fixed 30s used to be for every download longer than that.
+After the drain the process lingers `qits.mirror.shutdown.linger=10s` before exiting, because a
+response Quarkus calls complete may still sit in the kernel's send buffer, and exiting at once lets
+swarm tear down the network namespace under it — a 201 MB jar lost its last 639 KB that way — so
+the budget is 570s + 10s, still under the 10m grace.
 
 ## Not here yet
 
