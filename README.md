@@ -354,6 +354,14 @@ reach for the first time, and `quarkus.quinoa.ignored-path-prefixes` lists them
 absolutely — `/mirror,/npm,/artifacts,/v2` — so a mistyped machine path is a 404 rather
 than a page.
 
+**A redeploy lets the old task finish what it is sending (qits-1170).** The update is start-first:
+the successor passes its readiness probe, and only then does swarm send the predecessor SIGTERM and
+take it out of the load balancer, so nothing new reaches it. What it is already streaming — a 201 MB
+jar, an OCI layer — is allowed up to `quarkus.shutdown.timeout=570s` to finish, inside the
+`stop_grace_period: 10m` that `.config/qits/deployments.yml` hands the deployer for
+`--stop-grace-period`. Keep the two in step: a timeout at or over the grace is SIGKILL
+mid-transfer, which is what 25s inside a fixed 30s used to be for every download longer than that.
+
 ## Not here yet
 
 The admin API and the explorer UI were the open phase-2 work package in
