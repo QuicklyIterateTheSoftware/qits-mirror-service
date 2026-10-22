@@ -82,7 +82,7 @@
         <!-- The consumer half of the contracts (ticket qits-1149): the golden-master reader, and the
              qits-idp recordings contracts/IdpPactTest binds. Exact pins; the bump train moves them. -->
         <qits.pact-consumer.version>2026.1019.82625</qits.pact-consumer.version>
-        <qits.idp-golden-masters.version>2026.1021.194347</qits.idp-golden-masters.version>
+        <qits.idp-golden-masters.version>2026.1022.183304</qits.idp-golden-masters.version>
         <!-- Where the two library repositories' jars come from when they are not in ~/.m2 — which
              is every build that is not a developer's. The default is the public host, which answers
              401 without the commissioned client; the image build derives the same address from its
