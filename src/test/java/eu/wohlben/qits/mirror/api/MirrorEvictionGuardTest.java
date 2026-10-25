@@ -110,6 +110,20 @@ class MirrorEvictionGuardTest {
   }
 
   @Test
+  void theDeliveryDeskIsAdmittedToo() {
+    // qits:desk is the delivery desk's token role, issued alongside qits:agent (plus a project
+    // claim). The rule from qits-1596: the desk is admitted everywhere qits:admin-agent is.
+    given()
+        .header("X-Qits-User", "delivery-desk")
+        .header("X-Qits-Roles", "qits:desk")
+        .queryParam("path", SOME_ENTRY)
+        .when()
+        .delete(DOOR)
+        .then()
+        .statusCode(404);
+  }
+
+  @Test
   void aMachineIsAdmittedToo() {
     // qits:system is the second half of the operator-door idiom: a repair job clears a poisoned
     // entry without a person, on the same route and with the same effect.
