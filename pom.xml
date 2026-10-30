@@ -50,7 +50,7 @@
              block. Published by libs/qits-integrations-quarkus, so they come from the same
              repository as the two above. -->
         <qits.db-core.version>2026.1002.70617</qits.db-core.version>
-        <qits.arch-rules.version>2026.1026.133840</qits.arch-rules.version>
+        <qits.arch-rules.version>2026.1030.30851</qits.arch-rules.version>
         <!-- The forward-auth mechanism, and the reason this service has one at all now: the admin
              API grew its FIRST WRITE. Until the invalidate door landed the pom above could say "no
              qits-auth-core: the admin API adds nothing to defend, because it has no write", and that
