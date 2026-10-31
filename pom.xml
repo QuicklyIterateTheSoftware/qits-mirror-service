@@ -67,7 +67,7 @@
 
              Same pin as qits-db-core and qits-arch-rules above — one release of
              libs/qits-integrations-quarkus publishes all three, and the three move together. -->
-        <qits.auth-core.version>2026.1012.173247</qits.auth-core.version>
+        <qits.auth-core.version>2026.1031.63225</qits.auth-core.version>
         <!-- CallerServerFilter/CallerClientFilter: jandex-indexed filters that record inbound
              X-Qits-Caller as the qits.caller span attribute and stamp it on outgoing REST-client
              calls. Also published by qits-integrations-quarkus. -->
