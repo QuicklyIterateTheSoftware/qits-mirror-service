@@ -212,6 +212,9 @@ public class NpmInstallThroughTheMirrorIT {
     commands.env("npm_config_fund", "false");
     commands.env("npm_config_audit", "false");
 
+    // The install leaves a package-lock.json here, under target/, resolving against this test's
+    // own localhost registry. qits-ci's lockfile origin check prunes target/ (qits-1802), so a
+    // release run continuing on this QA run's held slot does not refuse it.
     commands.in("cold-build");
     commands.file("package.json", CONSUMER_MANIFEST).as("consumer-prepared");
 
