@@ -10,6 +10,7 @@ import eu.wohlben.qits.mirror.MirrorRepositorySeeder;
 import io.quarkus.test.common.http.TestHTTPResource;
 import io.quarkus.test.junit.QuarkusTest;
 import io.quarkus.test.junit.TestProfile;
+import io.quarkus.test.security.TestSecurity;
 import jakarta.inject.Inject;
 import java.net.URI;
 import java.net.URL;
@@ -38,6 +39,9 @@ import org.junit.jupiter.api.Test;
  * refusal needs the {@code %test} dev-user blanked, and that IS a different profile.
  */
 @QuarkusTest
+// The operator at the door is stated, not sent as the forward-auth header pair (qits-1366): every
+// case here evicts, and qits:admin is the person's role the door admits.
+@TestSecurity(user = "eviction-test", roles = "qits:admin")
 @TestProfile(MavenCacheSmokeTest.AgainstTheStubUpstream.class)
 class MavenCacheEvictionTest {
 
@@ -261,8 +265,9 @@ class MavenCacheEvictionTest {
    * keeps this file honest if the fallback ever changes. What the guard REFUSES is proved in {@code
    * MirrorEvictionGuardTest}, which blanks that fallback.
    */
+  /** A door call: the identity is the class's {@code @TestSecurity} operator. */
   private static io.restassured.specification.RequestSpecification operator() {
-    return given().header("X-Qits-User", "eviction-test").header("X-Qits-Roles", "qits:admin");
+    return given();
   }
 
   private MavenClient client() {

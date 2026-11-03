@@ -367,6 +367,13 @@
             <scope>test</scope>
         </dependency>
         <dependency>
+            <!-- @TestSecurity: the guard tests name their caller rather than sending the
+                 forward-auth header pair, which goes with qits-1338 (qits-1366). -->
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-test-security</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <groupId>io.rest-assured</groupId>
             <artifactId>rest-assured</artifactId>
             <scope>test</scope>

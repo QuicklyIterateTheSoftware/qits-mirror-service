@@ -209,6 +209,19 @@ ships on. All three upstreams are in-process stubs; the suite has no network, an
 its default for every upstream key is a closed port so a test that has not opted
 into a stub cannot reach the internet by accident.
 
+**The suite does not use forward-auth (epic qits-543, qits-1366).** The one guarded route,
+the invalidate door (`DELETE /mirror/api/repositories/{repository}/entries`), is tested with
+`@TestSecurity` naming the caller and the role it means (`MirrorEvictionGuardTest`,
+`MavenCacheEvictionTest`), or with a real bearer (`MachinePlatformAudienceTest`). The test
+config blanks qits-auth-core's `%test` dev user and renames the forward headers
+(`%test.qits.auth.forward.*` in `src/test/resources/application.properties`, which go with
+qits-1338), so a header-less request is anonymous and a stray `X-Qits-User` authenticates
+nothing. **In dev mode the door needs a bearer**: the `%dev` dev user goes with qits-1338,
+and the gate keeps the OIDC tenant off in `quarkus:dev`, so the DELETE answers 401 there
+until the tenant is pointed at an idp (`qits.auth.machine.required=true`); call it with a
+token, e.g. `curl -X DELETE -H "Authorization: Bearer $(qits-token qits-platform)" ...`. The
+wire protocols and the listings stay anonymous either way.
+
 Needs `eu.wohlben.qits:qits-blobstore` and `qits-registries-{common,npm,maven,oci}`
 installed locally (`./mvnw install` in `components/qits-registries/qits-registries-javalib`,
 which builds them all) or released to the platform's Maven repository, which the

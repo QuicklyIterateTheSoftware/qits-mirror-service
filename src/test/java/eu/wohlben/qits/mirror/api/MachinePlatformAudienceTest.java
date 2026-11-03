@@ -51,9 +51,8 @@ class MachinePlatformAudienceTest {
   /**
    * Turns the gate on ({@code qits.auth.machine.required=true}, which {@code
    * quarkus.oidc.tenant-enabled} follows) and points token validation at the fixed test key instead
-   * of a JWKS endpoint. The dev user is blanked, as every guard test here does (see {@link
-   * MirrorEvictionGuardTest.NoDevUser}): a signed-in {@code %test} fallback would make every request
-   * pass the guard whether the bearer is read at all.
+   * of a JWKS endpoint. The suite's test config blanks the forward-auth dev user (qits-1366), so a
+   * request without a bearer is anonymous and the guard is really decided by the token.
    */
   public static class GateOnWithAFixedSigningKey implements QuarkusTestProfile {
     @Override
@@ -62,7 +61,6 @@ class MachinePlatformAudienceTest {
           "qits.auth.machine.required", "true",
           "quarkus.oidc.public-key", PUBLIC_KEY_BASE64,
           "quarkus.oidc.token.issuer", ISSUER,
-          "qits.auth.forward.dev-user", "",
           // BLANKED, NOT JUST THE PUBLIC KEY ADDED: quarkus-oidc only takes the fully offline path
           // (no HTTP client, no connection attempt at all) when auth-server-url is ALSO absent —
           // with it set, discovery still makes it build a remote client and try to
