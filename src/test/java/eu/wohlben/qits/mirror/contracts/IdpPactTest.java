@@ -28,6 +28,13 @@ import org.junit.jupiter.api.Test;
  *
  * <p>The calls parse the answers with the classes quarkus-oidc uses: {@link
  * OidcConfigurationMetadata} and jose4j's {@link JsonWebKeySet}.
+ *
+ * <p>The third row is independent of that gate: the client-credentials mint of the named client
+ * {@code qits} (epic qits-428), {@link #MINT} — {@code POST /idp/token} with HTTP Basic, {@code
+ * grant_type=client_credentials} and {@code audience=qits-platform}, recorded by qits-idp as {@code
+ * issueToken} in {@value #A_SERVICE_CLIENT_CALLING_ITS_PEERS}. qits-telemetry-core's exporters spend
+ * the token on every OTLP export, so those exports are its trigger. {@link IdpTokenMintPactTest}
+ * runs it through the real oidc client, because the client only exists inside the application.
  */
 class IdpPactTest {
 
@@ -45,7 +52,20 @@ class IdpPactTest {
       GoldenInteraction.of(Trigger.event("StartupEvent"), STATE, "getJwks")
           .consumes("keys[].kid", "keys[].kty", "keys[].n", "keys[].e", "keys[].alg", "keys[].use");
 
-  static final ConsumerPact PACT = ConsumerPact.of("qits-mirror-service", IDP, DISCOVERY, JWKS);
+  /** The qits-idp state that records the client-credentials mint of a service client. */
+  static final String A_SERVICE_CLIENT_CALLING_ITS_PEERS = "a service client calling its peers";
+
+  /** The mint, caused by whichever OTLP export needs a bearer first. */
+  static final GoldenInteraction MINT =
+      GoldenInteraction.of(
+              Trigger.of("call", "call", "qits-telemetry-core's BearerHeaders (every OTLP export)"),
+              A_SERVICE_CLIENT_CALLING_ITS_PEERS,
+              "issueToken")
+          .header("Authorization", "{authorization}")
+          .consumes("access_token", "expires_in");
+
+  static final ConsumerPact PACT =
+      ConsumerPact.of("qits-mirror-service", IDP, DISCOVERY, JWKS, MINT);
 
   @Test
   void quarkusOidcReadsTheDiscoveryDocument() {

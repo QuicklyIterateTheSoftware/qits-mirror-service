@@ -338,7 +338,8 @@ handed. A missing bundle is a red build at a `test -f` guard, before the native 
 one shipping a service that answers `/` with a 404. `.config/qits/deployments.yml` is the
 deploy answer:
 **a platform service** (one cache warmed by every environment, not a copy per tier) with
-`resources: postgresql:db` and the health gate at `/mirror/q/health/ready`. The one thing that
+`resources: postgresql:db:qits_platform_mirror, idp:client` and the health gate at
+`/mirror/q/health/ready`. The one thing that
 grammar cannot say — the loopback host port `127.0.0.1:8082:8080` its non-qits-net clients need — is
 a run-arg, written by the bootstrap CLI. **There is no blobs volume any more**: the container is
 stateless except for its database, so a deployment still mounting one is carrying dead bytes. Every
@@ -349,6 +350,13 @@ The database arrives through the platform's generic resource contract —
 `QITS_RESOURCE_DB_URL` / `_USERNAME` / `_PASSWORD`. None of them has a default:
 an unset variable kills the process at Flyway's `migrate-at-start` naming the
 missing variable, rather than opening some fallback store nobody meant.
+
+`idp:client` is this application's own qits-idp service client, injected as
+`QITS_RESOURCE_IDP_URL` / `_CLIENT_ID` / `_CLIENT_SECRET`. The named oidc client
+`quarkus.oidc-client.qits` mints a bearer from it, which qits-telemetry-core attaches to every OTLP
+export: telemetry reaches qits-observability at its edge host, and the edge refuses an anonymous
+POST (epic qits-428). The client is independent of `qits.auth.machine.required` — that gate is about
+the tokens others present here — and is off under `%dev` and `%test`.
 
 Readiness is at `/mirror/q/health/ready`.
 

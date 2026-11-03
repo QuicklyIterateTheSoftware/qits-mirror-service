@@ -77,9 +77,9 @@ import java.util.Map;
  *       background work this process has and its only trigger is the clock at 03:20; a run that
  *       happened to start then would be deleting rows underneath the stories.
  *   <li><b>OTel</b> — dark outside a deployment, like {@code %dev}/{@code %test}. A neutralisation
- *       and not tidiness: the shipped config points the exporter at {@code
- *       http://dev-qits-observability:8080}, a name that resolves on qits-net and nowhere else, and an
- *       exporter flushes on a schedule of its own, on its own thread, so its batches would draw
+ *       and not tidiness: the shipped config points qits-telemetry-core's exporters at
+ *       qits-observability's edge host and mints a bearer for them, neither of which a story run
+ *       has, and an exporter flushes on a schedule of its own, on its own thread, so its batches would draw
  *       arrows into whichever story happened to be open — a {@code networkHash} that never settles.
  *       So <b>no story here covers this service's self-export</b>, and none claims its absence
  *       either: an {@code assertNoEdgesTo} over an exporter this profile switched off would be a
