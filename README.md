@@ -24,21 +24,22 @@ Three repository types, all of them caches:
 | `OCI_MIRROR` | `hub`, `quay`, `redhat` | one `oci_mirror_upstream` row each | `/v2/<slug>/…` |
 
 **Why the npm and maven caches answer on two paths.** `/artifacts/*` is what the
-`qits-registries` jars mount, and what a CI step on `qits-net` dials
-(`http://dev-qits-platform-mirror:8080/artifacts/npm/npmjs/`). Through the public edge
-it is unreachable: the edge routes `/artifacts` to `qits-artifacts` on **every** vhost,
-so `https://mirror.<env>.<domain>/artifacts/npm/npmjs/left-pad` is answered by the
-registry — `404 no such npm repository 'npmjs'`. The maven cache's second mount stays
-under this application's own `/mirror` segment (`qits.registries.maven.mirror-mount`).
-The npm cache's second mount, instead, sits at the **root** of this service's own
-hostname — `qits.registries.npm.mirror-mount=/npm` — because the edge already routes any
-path no other app claims to the hostname's own app, so a bare `/npm` needs no gateway
-entry of its own (verified: `https://mirror.qits.wohlben.eu/npm/left-pad` reaches this
-service). The library backing both mounts (`NpmRoutes.mirrorMount`) takes only ONE extra
-mount, never a list, so `/npm` **replaces** the earlier `/mirror/npm` rather than adding
-to it — that path was released an hour before this change and nothing but the
-not-yet-released CI runner work pointed at it. Every path serves the same rows with the
-same handlers; the two `/artifacts/*` roots are not going away.
+`qits-registries` jars mount, and what a CI step on `qits-net` dials directly, in-network
+(`http://dev-qits-platform-mirror:8080/artifacts/npm/npmjs/`). Through the public edge it
+is reachable too, on this service's own hostname: since qits-528 ("hostnames alone pick
+the application") the edge sends every path on `mirror.<env>.<domain>` to this
+application, so `https://mirror.qits.<domain>/artifacts/npm/npmjs/left-pad` and
+`/npm/npmjs/left-pad` both answer 200 (verified live, 2026-11-03). The older claim here —
+that the edge routed `/artifacts` to `qits-artifacts` on every vhost, so the `/artifacts`
+path 404'd through the edge — is history. The maven cache's second mount stays under
+this application's own `/mirror` segment (`qits.registries.maven.mirror-mount`). The npm
+cache's second mount sits at the **root** of this service's own hostname instead —
+`qits.registries.npm.mirror-mount=/npm` in `application.properties` — and stays the
+documented public path: every CI recipe dials it (qits-ci's `release-archetypes/*.yml`,
+`QITS_NPM_PROXY_URL`). The library backing both mounts (`NpmRoutes.mirrorMount`) takes
+only ONE extra mount, never a list, so `/npm` **replaces** rather than adds to whatever
+else is configured there. Every path serves the same rows with the same handlers; the
+two `/artifacts/*` roots are not going away.
 
 npm has one wrinkle maven does not: a packument names its tarballs by **absolute** URL.
 The `qits-registries-npm` jar builds `dist.tarball` from the request, never from
@@ -342,12 +343,12 @@ Readiness is at `/mirror/q/health/ready`.
 literals in the `qits-registries` jars, so this service answers npm and maven on
 the same `/artifacts/*` paths `qits-artifacts` does, and OCI at the host root like
 every registry. maven is *also* mounted under `/mirror`, and npm at the root, `/npm`
-(see "Why the npm and maven caches answer on two paths" above), because the edge hands
-`/artifacts` to `qits-artifacts` whatever the host. The per-service host is what settles
-that collision: those paths are reached on `mirror.<env>.<domain>`, so no gateway entry
-has to choose between two services for `/artifacts/*`. Splitting the client configuration
-(npm scoped registries, dockerd `registry-mirrors`, the maven repositories list) is still
-the cutover phase's job.
+(see "Why the npm and maven caches answer on two paths" above) — not to dodge a
+collision on this service's own host, since qits-528 ("hostnames alone pick the
+application") means `/artifacts/*` already reaches this service there too, but because
+`/npm/npmjs/` is the path every CI recipe and client config names. Splitting the client
+configuration (npm scoped registries, dockerd `registry-mirrors`, the maven repositories
+list) is still the cutover phase's job.
 
 Because the client now sits at `/`, those roots are inside the SPA fallback's
 reach for the first time, and `quarkus.quinoa.ignored-path-prefixes` lists them
