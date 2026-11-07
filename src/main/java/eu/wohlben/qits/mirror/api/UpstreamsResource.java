@@ -6,6 +6,7 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 import java.util.List;
+import org.eclipse.microprofile.openapi.annotations.Operation;
 
 /**
  * The explorer's second page: which container registries this service mirrors.
@@ -31,6 +32,7 @@ public class UpstreamsResource {
    * is false and looks like a configuration someone should go and repair.
    */
   @GET
+  @Operation(operationId = "listUpstreams")
   public ListUpstreamsResponse list() {
     return new ListUpstreamsResponse(explorer.upstreams());
   }

@@ -6,6 +6,7 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 import java.util.List;
+import org.eclipse.microprofile.openapi.annotations.Operation;
 
 /**
  * The explorer's first page: every cache root this service holds.
@@ -35,6 +36,7 @@ public class RepositoriesResource {
    * would make a page that says "this mirror caches nothing" during an outage.
    */
   @GET
+  @Operation(operationId = "listRepositories")
   public ListRepositoriesResponse list() {
     return new ListRepositoriesResponse(explorer.repositories());
   }

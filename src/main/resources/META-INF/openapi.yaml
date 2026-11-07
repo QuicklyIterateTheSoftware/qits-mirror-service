@@ -1,0 +1,39 @@
+# The JSON and XML doors of the Vert.x wires that other qits repositories call (qits-1931).
+#
+# These routes are Vert.x, from the qits-registries jars, not JAX-RS, so no annotation can describe
+# them. SmallRye merges this file into the served document at /mirror/q/openapi, beside the admin
+# API's annotated operations. It names each door a consumer's pact cites, so the golden masters and
+# the pacts share one operationId per door.
+#
+# Only the doors another qits repository calls are named: qits-maintenance's LatestResolver reading
+# a cached maven artifact's maven-metadata.xml and an npm packument, for an EXTERNAL pin. The full
+# grammar of the caches is the protocol's own (the maven repository layout, the npm registry API,
+# OCI distribution), and the mvn, npm and docker clients that speak it are not qits callers. Each
+# door also answers on its other mount (/mirror/maven/{repository}/..., /artifacts/npm/{repository}/...);
+# the paths here are the ones the consumers dial.
+#
+# A {groupPath} or {package} may hold slashes (a maven group path, an @scope/name package), which an
+# OpenAPI path parameter cannot express; the routes accept them all the same.
+openapi: 3.1.0
+paths:
+  /artifacts/maven/{repository}/{groupPath}/{artifact}/maven-metadata.xml:
+    get:
+      operationId: getMavenMetadata
+      summary: The maven-metadata.xml of one groupId/artifactId, read through the pull-through cache.
+      parameters:
+        - { name: repository, in: path, required: true, schema: { type: string } }
+        - { name: groupPath, in: path, required: true, schema: { type: string } }
+        - { name: artifact, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: "The document, application/xml; versioning.versions lists every version upstream publishes." }
+        "404": { description: "Upstream has no such artifact, and so neither does the cache." }
+  /npm/{repository}/{package}:
+    get:
+      operationId: getNpmPackument
+      summary: The packument of one package, read through the pull-through cache; dist.tarball names the asking host.
+      parameters:
+        - { name: repository, in: path, required: true, schema: { type: string } }
+        - { name: package, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: "{_id, name, dist-tags, versions:{<version>:{name, version, dist}}, time}." }
+        "404": { description: "Upstream has no such package, and so neither does the cache." }

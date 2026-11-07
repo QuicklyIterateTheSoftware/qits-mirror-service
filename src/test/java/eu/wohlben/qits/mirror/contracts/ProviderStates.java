@@ -14,9 +14,15 @@ import io.quarkus.arc.ManagedContext;
 import io.agroal.api.AgroalDataSource;
 import io.quarkus.agroal.DataSource;
 import io.quarkus.narayana.jta.QuarkusTransaction;
+import io.quarkus.test.common.http.TestHTTPResourceManager;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
@@ -70,6 +76,13 @@ public class ProviderStates {
    */
   public static final String A_CACHED_NPM_PACKAGE = "a cached npm package with published versions";
 
+  /**
+   * The invalidate door's operator: the {@code central} cache holds one {@code maven-metadata.xml}
+   * row, fetched through the wire, which {@code evictCacheEntry} can drop.
+   */
+  public static final String A_MAVEN_CACHE_HOLDING_METADATA =
+      "a maven cache holding cached metadata";
+
   /** A maven artifact Central does not have, and so neither does the cache: metadata answers 404. */
   public static final String NO_MAVEN_ARTIFACT_UPSTREAM = "no maven artifact of that name upstream";
 
@@ -79,6 +92,7 @@ public class ProviderStates {
   static final String MAVEN_GROUP = "org.example";
   static final String MAVEN_ARTIFACT = "contract-library";
   static final String MAVEN_ABSENT_ARTIFACT = "contract-absent";
+  static final String MAVEN_EVICTED_ARTIFACT = "contract-evicted";
   static final String[] MAVEN_VERSIONS = {"1.0.0", "1.1.0", "2.0.0"};
   static final String NPM_CACHED_PACKAGE = "contract-package";
   static final String NPM_ABSENT_PACKAGE = "contract-absent-package";
@@ -109,6 +123,7 @@ public class ProviderStates {
     states.put(A_CACHED_MAVEN_ARTIFACT, this::aCachedMavenArtifact);
     states.put(A_CACHED_NPM_PACKAGE, this::aCachedNpmPackage);
     states.put(NO_MAVEN_ARTIFACT_UPSTREAM, this::noMavenArtifactUpstream);
+    states.put(A_MAVEN_CACHE_HOLDING_METADATA, this::aMavenCacheHoldingMetadata);
     states.put(NO_NPM_PACKAGE_UPSTREAM, this::noNpmPackageUpstream);
   }
 
@@ -205,6 +220,28 @@ public class ProviderStates {
     return mavenParams(MAVEN_ARTIFACT);
   }
 
+  /**
+   * Central publishes {@code org.example:contract-evicted} at {@code 1.0.0}, and a client has read
+   * its {@code maven-metadata.xml} through the wire, so the {@code central} cache holds exactly one
+   * {@code maven_proxy_metadata} row for it — one row for the door to remove.
+   *
+   * <p>The read goes through {@code /artifacts/maven/central/...} rather than straight into {@link
+   * MavenUpstream}, so the row is the one a real pull leaves behind.
+   */
+  private Setup aMavenCacheHoldingMetadata() {
+    seeder.ensureDefaults();
+    clearNpmCache();
+    clearMavenCache();
+    ContractMavenUpstream.pointAtTheStub(mavenUpstream);
+    ContractMavenUpstream.hostMetadata(MAVEN_GROUP, MAVEN_EVICTED_ARTIFACT, "1.0.0");
+    String path = mavenMetadataPath(MAVEN_EVICTED_ARTIFACT);
+    fetchThroughTheWire("/artifacts/maven/" + MirrorRepositorySeeder.MAVEN_CACHE + "/" + path);
+    Map<String, String> params = new TreeMap<>(mavenParams(MAVEN_EVICTED_ARTIFACT).params());
+    params.put("repository", MirrorRepositorySeeder.MAVEN_CACHE);
+    params.put("path", path);
+    return new Setup(Collections.unmodifiableMap(params));
+  }
+
   /** Central has no {@code org.example:contract-absent}, and the cache holds nothing of it. */
   private Setup noMavenArtifactUpstream() {
     seeder.ensureDefaults();
@@ -263,6 +300,24 @@ public class ProviderStates {
 
   private static String mavenMetadataPath(String artifact) {
     return MAVEN_GROUP.replace('.', '/') + "/" + artifact + "/maven-metadata.xml";
+  }
+
+  /** GETs one wire path on the running application; anything but a 200 fails the state. */
+  private static void fetchThroughTheWire(String path) {
+    URI uri = URI.create(TestHTTPResourceManager.getUri()).resolve(path);
+    try (HttpClient client = HttpClient.newHttpClient()) {
+      HttpResponse<Void> response =
+          client.send(
+              HttpRequest.newBuilder(uri).GET().build(), HttpResponse.BodyHandlers.discarding());
+      if (response.statusCode() != 200) {
+        throw new IllegalStateException("GET " + uri + " answered " + response.statusCode());
+      }
+    } catch (IOException e) {
+      throw new IllegalStateException("GET " + uri, e);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new IllegalStateException("GET " + uri, e);
+    }
   }
 
   /** Runs a proxy read off the test thread's request, the way a route would run it. */

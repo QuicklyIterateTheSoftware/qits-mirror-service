@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.node.TextNode;
 import io.quarkus.test.common.http.TestHTTPResource;
 import io.quarkus.test.junit.QuarkusTest;
 import io.quarkus.test.junit.TestProfile;
+import io.quarkus.test.security.TestSecurity;
 import jakarta.inject.Inject;
 import java.io.IOException;
 import java.net.URI;
@@ -58,6 +59,10 @@ import org.junit.jupiter.api.Test;
  *
  * <p>Nothing else varies between runs.
  *
+ * <p><b>The recorder is an operator.</b> {@code evictCacheEntry} is {@code @RolesAllowed}, so the
+ * class runs as {@code qits:admin}, the role the explorer's operator carries — as {@code
+ * MirrorEvictionGuardTest} states it. The other doors are open, and answer the same to anyone.
+ *
  * <p>It <b>compares by default</b> and fails with a unified diff per differing file — including a
  * committed {@code .json} no interaction produces any more. {@code -Dgolden.update=true} (or {@code
  * QITS_GOLDEN_UPDATE=true}) rewrites instead, and deletes such stale files; see {@link
@@ -65,6 +70,7 @@ import org.junit.jupiter.api.Test;
  */
 @QuarkusTest
 @TestProfile(ContractProfile.class)
+@TestSecurity(user = "operator", roles = "qits:admin")
 class GoldenMasterRecordingTest {
 
   static final int FORMAT_VERSION = 1;
@@ -78,8 +84,8 @@ class GoldenMasterRecordingTest {
       Pattern.compile("\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d+)?)?(Z|[+-]\\d{2}:\\d{2})");
 
   /**
-   * One recorded interaction. {@code path} is the template; {@code {name}} segments are filled from
-   * the state's params.
+   * One recorded interaction. {@code path} is the template, recorded as such in the index; its
+   * {@code {name}} placeholders — query values too — are filled from the state's params.
    */
   record Interaction(
       String state,
@@ -117,8 +123,9 @@ class GoldenMasterRecordingTest {
   static final String NPM_PACKUMENT = "/npm/npmjs/{package}";
 
   /**
-   * The service publishes no OpenAPI document, so the operation ids are this table's. Renaming one
-   * is a contract change all the same.
+   * Each operation id is the one {@code docs/openapi.yml} gives the door — the admin API's from its
+   * {@code @Operation} annotations, the wire doors' from {@code META-INF/openapi.yaml}. Renaming one
+   * is a contract change.
    */
   static final List<Interaction> INTERACTIONS =
       List.of(
@@ -139,6 +146,13 @@ class GoldenMasterRecordingTest {
               "listRepositoryPackages",
               "GET",
               "/mirror/api/repositories/{repository}/packages",
+              200),
+          // The invalidate door, as an operator drops one cached maven-metadata.xml.
+          new Interaction(
+              ProviderStates.A_MAVEN_CACHE_HOLDING_METADATA,
+              "evictCacheEntry",
+              "DELETE",
+              "/mirror/api/repositories/{repository}/entries?path={path}",
               200),
           // The caches, as qits-maintenance's LatestResolver reads them for an EXTERNAL pin.
           Interaction.statusOnly(
@@ -277,7 +291,10 @@ class GoldenMasterRecordingTest {
     }
   }
 
-  /** The operation's answer, with the path's {@code {name}} segments filled from the params. */
+  /**
+   * The operation's answer, with the path's {@code {name}} placeholders — in the query string too —
+   * filled from the params.
+   */
   private HttpResponse<String> call(Interaction interaction, Map<String, String> params) throws Exception {
     String path = interaction.path();
     for (Map.Entry<String, String> param : params.entrySet()) {

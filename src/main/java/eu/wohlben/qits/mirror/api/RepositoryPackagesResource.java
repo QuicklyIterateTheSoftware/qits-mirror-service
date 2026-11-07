@@ -8,6 +8,7 @@ import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 import java.util.List;
+import org.eclipse.microprofile.openapi.annotations.Operation;
 
 /** Read-only drill-down from a cache root into the packages it currently holds. */
 @Path("/repositories/{repository}/packages")
@@ -20,6 +21,7 @@ public class RepositoryPackagesResource {
       MirrorRepositoryRow repository, List<CachedPackageRow> packages) {}
 
   @GET
+  @Operation(operationId = "listRepositoryPackages")
   public ListPackagesResponse list(@PathParam("repository") String repository) {
     MirrorRepositoryRow root =
         explorer.repositories().stream()

@@ -57,6 +57,33 @@
       ]
     },
     {
+      "name": "a maven cache holding cached metadata",
+      "slug": "a-maven-cache-holding-cached-metadata",
+      "params": {
+        "artifact": "contract-evicted",
+        "groupPath": "org/example",
+        "name": "org.example:contract-evicted",
+        "path": "org/example/contract-evicted/maven-metadata.xml",
+        "repository": "central"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "evictCacheEntry",
+          "method": "DELETE",
+          "path": "/mirror/api/repositories/{repository}/entries?path={path}",
+          "status": 200,
+          "file": "a-maven-cache-holding-cached-metadata/evictCacheEntry.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
       "name": "an npm cache holding a package",
       "slug": "an-npm-cache-holding-a-package",
       "params": {

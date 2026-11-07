@@ -128,6 +128,11 @@ class ConsumerPactVerificationTest {
     return states.params(ProviderStates.NO_MAVEN_ARTIFACT_UPSTREAM);
   }
 
+  @State(ProviderStates.A_MAVEN_CACHE_HOLDING_METADATA)
+  Map<String, String> aMavenCacheHoldingMetadata() {
+    return states.params(ProviderStates.A_MAVEN_CACHE_HOLDING_METADATA);
+  }
+
   @State(ProviderStates.NO_NPM_PACKAGE_UPSTREAM)
   Map<String, String> noNpmPackageUpstream() {
     return states.params(ProviderStates.NO_NPM_PACKAGE_UPSTREAM);

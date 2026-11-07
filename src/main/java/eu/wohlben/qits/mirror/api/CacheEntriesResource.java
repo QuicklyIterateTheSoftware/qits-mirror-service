@@ -8,6 +8,7 @@ import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
+import org.eclipse.microprofile.openapi.annotations.Operation;
 
 /**
  * The invalidate door: {@code DELETE /mirror/api/repositories/{repository}/entries?path=…}.
@@ -54,6 +55,7 @@ public class CacheEntriesResource {
    * @param path the entry exactly as the wire serves it, repository-relative
    */
   @DELETE
+  @Operation(operationId = "evictCacheEntry")
   @RolesAllowed({"qits:admin", "qits:admin-agent", "qits:desk-admin", "qits:desk", "qits:system"})
   public MirrorEntryEviction.Evicted evict(
       @PathParam("repository") String repository, @QueryParam("path") String path) {
