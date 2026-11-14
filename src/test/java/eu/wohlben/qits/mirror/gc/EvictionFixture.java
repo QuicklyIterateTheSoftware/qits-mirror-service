@@ -442,7 +442,10 @@ abstract class EvictionFixture {
         });
   }
 
-  private void execute(String sql) {
+  // Package-private rather than private: CacheEvictionSweepTest's segment cases (qits-2248) reach
+  // the chunk table's partitions the same way the store's own suite does, through this one
+  // connection-handling trio.
+  void execute(String sql) {
     try (Connection connection = blobs.getConnection();
         Statement statement = connection.createStatement()) {
       statement.execute(sql);
@@ -451,12 +454,24 @@ abstract class EvictionFixture {
     }
   }
 
+  /** One scalar off the blob datasource — a partition count, a segment number. */
+  long count(String sql) {
+    try (Connection connection = blobs.getConnection();
+        Statement statement = connection.createStatement();
+        var rows = statement.executeQuery(sql)) {
+      rows.next();
+      return rows.getLong(1);
+    } catch (SQLException e) {
+      throw new IllegalStateException(sql, e);
+    }
+  }
+
   /** Fills in a prepared statement's parameters, the way JDBC makes you. */
-  private interface Binding {
+  interface Binding {
     void bind(PreparedStatement statement) throws SQLException;
   }
 
-  private void update(String sql, Binding binding) {
+  void update(String sql, Binding binding) {
     try (Connection connection = blobs.getConnection();
         PreparedStatement statement = connection.prepareStatement(sql)) {
       binding.bind(statement);
