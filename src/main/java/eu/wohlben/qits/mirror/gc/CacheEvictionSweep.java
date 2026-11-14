@@ -1,5 +1,6 @@
 package eu.wohlben.qits.mirror.gc;
 
+import eu.wohlben.qits.blobstore.control.BlobCompaction;
 import eu.wohlben.qits.blobstore.control.BlobReclaim;
 import io.quarkus.scheduler.Scheduled;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -36,6 +37,15 @@ import org.jboss.logging.Logger;
  * "applied" set.</b> An identity the grace window withheld keeps its rows, so the fresh pre-unlink
  * census still sees the blobs it names and the sweep counts them as still referenced. That is the
  * belt the withheld case rests on, and it is the same one that catches a pull arriving mid-run.
+ *
+ * <p><b>Then the disk comes back, which the unlink loop alone never did (qits-2248).</b> {@link
+ * MirrorBlobSweep#execute} deletes chunk rows, and PostgreSQL keeps the space they held inside the
+ * table's files — it reuses it for a later write but never returns it to the filesystem, so a run
+ * that reclaimed half the cache left the volume exactly as full. After the blob loop, a real run
+ * therefore calls the library's {@link BlobCompaction}, which drains mostly-dead chunk segments and
+ * drops their partitions — the one operation that unlinks files — and the figures it measured ride
+ * beside the data figures in the one log line. A dry run never reaches it: compaction moves and
+ * drops partitions, which is a write, and a plan must stay reviewable without side effects.
  */
 @ApplicationScoped
 public class CacheEvictionSweep {
@@ -47,6 +57,7 @@ public class CacheEvictionSweep {
   @Inject MirrorBlobCensus census;
   @Inject MirrorBlobSweep sweep;
   @Inject BlobReclaim blobs;
+  @Inject BlobCompaction compaction;
 
   private final CacheEviction engine = new CacheEviction();
 
@@ -58,13 +69,16 @@ public class CacheEvictionSweep {
    * @param types one line per registered evictor, in the order CDI found them
    * @param blobPlan what the reconciliation freed, or would free on a dry run
    * @param blobs the unlink loop's own counts; all zero on a dry run
+   * @param disk what the post-sweep compaction measured (qits-2248), or null on a dry run or when
+   *     compaction itself failed — a failure is a logged warning, never a failed sweep
    */
   public record SweepReport(
       Instant startedAt,
       boolean dryRun,
       List<TypeResult> types,
       MirrorBlobSweep.SweepPlan blobPlan,
-      MirrorBlobSweep.SweepOutcome blobs) {
+      MirrorBlobSweep.SweepOutcome blobs,
+      BlobCompaction.CompactionResult disk) {
 
     public SweepReport {
       types = List.copyOf(types);
@@ -187,7 +201,8 @@ public class CacheEvictionSweep {
           true,
           results,
           sweep.plan(taken, plans),
-          MirrorBlobSweep.SweepOutcome.nothing());
+          MirrorBlobSweep.SweepOutcome.nothing(),
+          null);
     }
 
     CacheEvictor.GraceWindow grace = graceWindow();
@@ -207,8 +222,57 @@ public class CacheEvictionSweep {
       }
     }
 
+    MirrorBlobSweep.SweepOutcome outcome = sweep.execute(taken, plans);
     return new SweepReport(
-        startedAt, false, results, sweep.plan(taken, plans), sweep.execute(taken, plans));
+        startedAt, false, results, sweep.plan(taken, plans), outcome, compact());
+  }
+
+  /**
+   * Gives back the disk the run's deletes left behind, and says what that was worth — or null.
+   *
+   * <p><b>Outside any transaction, by construction.</b> {@link BlobCompaction#compact()} commits
+   * each step on its own and refuses a caller's transaction with an {@link IllegalStateException};
+   * {@link #run} holds none at the point this is called — every delete above committed in a
+   * transaction of its own, opened and closed inside the evictor or the store — and this method is
+   * not {@code @Transactional} and carries no surrounding one. Should a caller ever wrap a sweep in
+   * one, the refusal lands in the catch below as a logged warning and a report with no disk figures,
+   * never as a failed sweep.
+   *
+   * <p><b>A failure never fails the sweep.</b> By the time this runs the identity rows and blobs are
+   * already gone, and the report is the only record of which; turning a compaction error into a
+   * thrown exception would throw that record away to report something the next run will retry
+   * anyway. It is logged as a warning, with the cause, and the report carries no disk figures rather
+   * than invented ones.
+   */
+  private BlobCompaction.CompactionResult compact() {
+    try {
+      return compaction.compact();
+    } catch (RuntimeException failed) {
+      LOG.warnf(
+          failed,
+          "Cache eviction: blob compaction failed, so this run reports no disk; the deletes stand"
+              + " and the next run compacts again — %s",
+          message(failed));
+      return null;
+    }
+  }
+
+  /** The disk half of a run's blob log line, beside the data figures it is not. */
+  private static String diskLine(BlobCompaction.CompactionResult disk) {
+    if (disk == null) {
+      return "disk not compacted (see the warning above)";
+    }
+    return String.format(
+        "disk %d -> %d bytes (blob tables), %d -> %d bytes (database), %d segments dropped, %d"
+            + " drained, %d held (%s)",
+        disk.blobTablesBytesBefore(),
+        disk.blobTablesBytesAfter(),
+        disk.databaseBytesBefore(),
+        disk.databaseBytesAfter(),
+        disk.segmentsDropped(),
+        disk.segmentsDrained(),
+        disk.segmentsHeld(),
+        disk.state());
   }
 
   /** The one log line a run leaves behind. */
@@ -258,6 +322,7 @@ public class CacheEvictionSweep {
     if (report.blobs().alreadyGone() > 0) {
       line.append(", ").append(report.blobs().alreadyGone()).append(" already gone");
     }
+    line.append(", ").append(diskLine(report.disk()));
     return line.toString();
   }
 
