@@ -2,17 +2,20 @@ package eu.wohlben.qits.mirror.gc;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.artifacts.control.MavenProxyProfile;
 import eu.wohlben.qits.artifacts.control.NpmProxyProfile;
 import eu.wohlben.qits.artifacts.control.OciMirrorProfile;
+import eu.wohlben.qits.blobstore.control.BlobCompaction;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -124,5 +127,82 @@ class CacheEvictionSweepTest extends EvictionFixture {
 
     assertTrue(
         line.contains(OciMirrorProfile.KEY + "=2 condemned (2 superseded)/2 deleted/1 kept"), line);
+  }
+
+  @Test
+  void anExecutedRunGivesTheDiskBackByDrainingAndDroppingTheSegmentItsDeleteEmptied()
+      throws Exception {
+    // qits-2248, the bug as the volume saw it: a run unlinked a blob, the log line said so in
+    // bytes, and the disk never came back — PostgreSQL keeps a deleted row's space inside the
+    // table's files. The report's disk figures are the compaction that follows the unlink loop,
+    // measured.
+    //
+    // The doomed tarball and a still-warm survivor are stored in one segment, which is then closed
+    // by a roll; a third, unrelated tarball lands in the new open segment. The sweep's grace window
+    // and eviction window are both past for the doomed row, so it dies and its blob unlinks, leaving
+    // the closed segment with one small live blob in a partition sized for much more — exactly what
+    // BlobCompaction drains into the open segment before dropping the now-empty partition.
+    Instant longAgo = Instant.now().minus(Duration.ofDays(200));
+    Instant yesterday = Instant.now().minus(Duration.ofDays(1));
+    String doomed = store(filled(3 * 4096 + 100, (byte) 61)); // several TOAST chunks: real pages
+    String survivor = store(filled(37, (byte) 37));
+    int closed = openSegment();
+    rollSegment();
+    String newest = store(filled(38, (byte) 38));
+    for (String blobId : List.of(doomed, survivor, newest)) {
+      backdate(blobId, Duration.ofDays(30)); // past the P7D blob grace window either way
+    }
+    npmVersionRow("doomed-pkg", "1.0.0", doomed, longAgo, longAgo);
+    npmVersionRow("survivor-pkg", "1.0.0", survivor, longAgo, yesterday);
+    npmVersionRow("newest-pkg", "1.0.0", newest, yesterday, yesterday);
+    assertEquals(1, partitionCount(closed), "the case only says anything if the segment exists");
+
+    CacheEvictionSweep.SweepReport report = sweep.run();
+
+    assertFalse(blobStore.exists(doomed), "the cold tarball lost its last row");
+    assertEquals(1, report.blobs().unlinked());
+    BlobCompaction.CompactionResult disk = report.disk();
+    assertNotNull(disk, "an executed run reports what compaction gave back");
+    assertEquals(BlobCompaction.CompactionResult.State.COMPACTED, disk.state());
+    assertTrue(disk.segmentsDropped() >= 1, disk.toString());
+    assertTrue(disk.segmentsDrained() >= 1, "the survivor's segment was drained: " + disk);
+    assertTrue(disk.bytesMoved() >= 37, "the survivor moved into the open segment: " + disk);
+    assertTrue(
+        disk.blobTablesBytesAfter() < disk.blobTablesBytesBefore(),
+        "the dropped partition is disk the blob tables gave back: " + disk);
+
+    assertEquals(0, partitionCount(closed), "the closed segment's partition is gone");
+    assertTrue(blobStore.exists(survivor), "the survivor still reads back from the open segment");
+    assertTrue(blobStore.exists(newest));
+
+    String line = CacheEvictionSweep.summary(report);
+    assertTrue(line.contains("segments dropped"), line);
+    assertTrue(line.contains("COMPACTED"), line);
+  }
+
+  /** The blob store's open segment: the partition every new chunk is written into. */
+  private int openSegment() {
+    return (int) count("select segment from blob_segment");
+  }
+
+  /**
+   * Closes the open segment the way the store's roll does, minus the locks a single-threaded case
+   * does not need: a partition for the next segment, and the open number moved onto it. The roll
+   * itself fires only once a segment passes {@code qits.artifacts.blobs.segment-size} (1 GiB), which
+   * no fixture here comes near, and it is the library's to test.
+   */
+  private void rollSegment() {
+    int next = openSegment() + 1;
+    execute(
+        "create table blob_chunk_" + next + " partition of blob_chunk for values in (" + next + ")");
+    execute("update blob_segment set segment = " + next);
+  }
+
+  /** 1 if segment {@code segment}'s partition exists, 0 once compaction dropped it. */
+  private long partitionCount(int segment) {
+    return count(
+        "select count(*) from pg_inherits i join pg_class c on c.oid = i.inhrelid"
+            + " join pg_class p on p.oid = i.inhparent where p.relname = 'blob_chunk'"
+            + " and c.relname = 'blob_chunk_" + segment + "'");
   }
 }
