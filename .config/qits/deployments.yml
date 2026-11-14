@@ -11,24 +11,6 @@
 # decommission the running service and start a stranger beside it.
 application: qits-mirror
 
-# WHAT THIS APPLICATION USED TO BE CALLED, and the one thing a rename is allowed to move.
-#
-# A renamed application is a NEW application to the deployer: services are keyed by name, swarm
-# cannot rename one, and pd_service / pd_deployment / pd_resource all hold an application name and
-# no repository identity. So this deploys BESIDE qits-platform-mirror and an operator retires the
-# predecessor afterwards. That half is unchanged.
-#
-# What this line moves is the DATABASE CLAIM. Without it the successor's first deploy is refused —
-# "the database qits_platform_mirror is already provisioned for qits-platform-mirror" — which is the
-# right refusal in general, because two unrelated repositories sharing a store is worse than a loud
-# failure. Naming the predecessor narrows that check to this one row rather than weakening it.
-#
-# It also preserves the CREDENTIAL: the claim row is read one statement later to decide whether to
-# send the stored password or a fresh one, so transferring it first means the predecessor — still
-# running, with open pools on that role — keeps working. Removing this line after the rename does not
-# tidy anything up; it re-arms the refusal.
-renamed_from: qits-platform-mirror
-
 # One route for this application's machine surface: the admin API at /mirror/api and health at
 # /mirror/q. Both are reached on this application's own host, mirror.<domain> — the hostname picks
 # the application, and this line is what keeps the prefix reachable there. The client itself is no
@@ -51,23 +33,19 @@ navigation-entries: system.Mirror:2
 #
 # The database name is not spelled because the default is right: it derives from the application name
 # with the `qits-` prefix dropped and dashes turned to underscores, so this asks for
-# `qits_platform_mirror`, and a name written out here would be a second copy of one answer.
+# `qits_mirror`, and a name written out here would be a second copy of one answer.
 #
 # application.properties maps those three variables onto quarkus.datasource.mirror.* with no defaults
 # behind them. Without this line the container has no database and dies at Flyway's migrate-at-start
 # naming the missing variable — which is the failure worth having: a cache that invented an empty
 # store would answer every lookup as a miss, refetch the internet on every build, and report nothing.
-# THE DATABASE IS NAMED EXPLICITLY, AND IT IS A SAFETY PIN RATHER THAN A PREFERENCE.
-# `postgresql:db` with no third segment DERIVES the database from the APPLICATION name —
-# `qits_` plus the name minus its `qits-` prefix. This application is STILL TO BE renamed
-# (qits-platform-mirror -> qits-mirror), so a derived name would ask for `qits_mirror`: the deployment
-# would provision a BRAND NEW EMPTY database and start against it, on a green deploy, with nothing
-# failing and every cached byte unreachable. This line is what makes the rename a rename of the
-# APPLICATION alone, which is the whole intent — and it has to OUTLIVE the rename, not just precede
-# it. Removing it later is not a tidy-up; it is a silent migration to an empty store.
 #
-# VERIFIED AGAINST THE SERVER, not derived: `qits_platform_mirror` is in pg_database on
-# qits-oci-postgresql today, and `qits_mirror` is not.
+# THE NAMES FOLLOW THE APPLICATION (epic qits-2174, task qits-2193). Until 2026-11-14 the database
+# was pinned to the predecessor's `qits_platform_mirror`, because a changed name used to provision an
+# empty database on a green deploy. Since qits-2175 a change of the effective name is a MOVE:
+# qits-deployments stops the service, copies the data into the new name, compares every table's
+# rows, and only then deploys; the source is kept for its retention period as the way back. Dropping
+# the pin moved it to `qits_mirror` that way.
 #
 # idp:client ASKS QITS-DEPLOYMENTS TO PROVISION THIS APPLICATION'S OWN QITS-IDP SERVICE CLIENT — id
 # `<env>-qits-mirror` (derived from env + application), roles fixed in qits-idp code. The deployer
@@ -76,7 +54,7 @@ navigation-entries: system.Mirror:2
 # application.properties reads. It is the bearer qits-telemetry-core attaches to every OTLP export,
 # now that this service ships its telemetry to qits-observability's edge host, where the edge
 # refuses an anonymous request (epic qits-428). Independent of qits.auth.machine.required.
-resources: postgresql:db:qits_platform_mirror, idp:client
+resources: postgresql:db, idp:client
 
 # THE PROBE THE DEPLOY GATES ON, SPELLED OUT BECAUSE THE DERIVED DEFAULT IS WRONG. The default would
 # be /platform-mirror/q/health/ready — the repository name minus `qits-`; this application serves its
