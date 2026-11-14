@@ -1,6 +1,7 @@
 package eu.wohlben.qits.mirror.gc;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.time.Duration;
@@ -79,6 +80,31 @@ class CacheEvictionTest {
     assertEquals(List.of(), plan.kept());
     assertEquals(Set.of(), plan.blobsReleased());
     assertEquals(Set.of(), plan.blobsRetained());
+  }
+
+  @Test
+  void anIdentityItsTypeCondemnsDiesYoungWithTheTypesOwnSentence() {
+    // The seam for a verdict only the type can reach: nothing can address this identity any more,
+    // so its age is beside the point. The engine takes the verdict as given, echoes its sentence,
+    // and still releases rather than subtracts — the blob sweep decides what is actually unlinked.
+    FakeCacheEvictor evictor =
+        new FakeCacheEvictor()
+            .condemn("hub/node@sha256:old", daysAgo(1), "superseded: nothing reaches it", "old")
+            .add("hub/node:24", daysAgo(1), "new")
+            .add("hub/node:20", daysAgo(90), "cold");
+
+    EvictionPlan plan = engine.plan(evictor, WINDOW, NOW);
+
+    assertEquals(List.of("hub/node:20", "hub/node@sha256:old"), identities(plan.dead()));
+    assertEquals(List.of("hub/node:24"), identities(plan.kept()));
+    JudgedIdentity superseded = plan.dead().get(1);
+    assertEquals("superseded: nothing reaches it", superseded.rule());
+    assertTrue(superseded.regardlessOfWindow());
+    assertEquals(CacheEviction.deadUnaccessed(WINDOW), plan.dead().get(0).rule());
+    assertFalse(plan.dead().get(0).regardlessOfWindow(), "the cold one died on the window");
+    assertEquals(1, plan.condemnedRegardlessOfWindow());
+    assertEquals(Set.of("old", "cold"), plan.blobsReleased());
+    assertEquals(Set.of("new"), plan.blobsRetained());
   }
 
   @Test

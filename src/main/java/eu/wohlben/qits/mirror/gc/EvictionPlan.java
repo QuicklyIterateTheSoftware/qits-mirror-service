@@ -30,6 +30,11 @@ public record EvictionPlan(
     blobsRetained = Set.copyOf(blobsRetained);
   }
 
+  /** How many of the dead were condemned on their type's word rather than on their access time. */
+  public int condemnedRegardlessOfWindow() {
+    return (int) dead.stream().filter(JudgedIdentity::regardlessOfWindow).count();
+  }
+
   /** A type with nothing to do — the honest answer for a cache whose every entry is warm. */
   public static EvictionPlan nothingDies(List<JudgedIdentity> kept, Set<String> live) {
     return new EvictionPlan(List.of(), kept, Set.of(), live);

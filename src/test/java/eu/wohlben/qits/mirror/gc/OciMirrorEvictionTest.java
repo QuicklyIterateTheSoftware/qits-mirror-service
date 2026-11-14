@@ -1,14 +1,17 @@
 package eu.wohlben.qits.mirror.gc;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import eu.wohlben.qits.artifacts.control.OciMediaTypes;
 import eu.wohlben.qits.artifacts.control.OciMirrorProfile;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
@@ -23,6 +26,8 @@ class OciMirrorEvictionTest extends EvictionFixture {
   private static final Duration WINDOW = Duration.ofDays(30);
 
   @Inject OciMirrorEvictor evictor;
+
+  @Inject CacheEvictionSweep sweep;
 
   private final CacheEviction engine = new CacheEviction();
 
@@ -145,6 +150,117 @@ class OciMirrorEvictionTest extends EvictionFixture {
   }
 
   @Test
+  void aTagReboundUpstreamCondemnsTheManifestItLeftBehindAlthoughThatManifestIsYoung()
+      throws Exception {
+    // The disk-filling case. jdk-25 moved upstream minutes ago and the pull bound it to new bytes;
+    // the index it used to name is a row no tag reaches. Waiting out the window would park it for a
+    // month, and a moving tag leaves one of these behind on every move.
+    MirrorStore mirror = seedMirror();
+    Rebound rebound = rebindMirrorTag(mirror);
+
+    EvictionPlan plan = engine.plan(evictor, WINDOW, Instant.now());
+
+    JudgedIdentity superseded = judged(plan.dead(), MIRROR_IMAGE + "@sha256:" + mirror.index());
+    assertEquals(OciMirrorEvictor.SUPERSEDED, superseded.rule());
+    assertTrue(superseded.regardlessOfWindow(), "condemned on reachability, not on age");
+    assertEquals(List.of(MIRROR_IMAGE + ":jdk-25"), identities(plan.kept()), "the tag is warm");
+    assertTrue(plan.blobsRetained().contains(rebound.manifest()), "and names its new bytes");
+  }
+
+  @Test
+  void aYoungSupersededIndexTakesItsUnreachableChildrenWithIt() throws Exception {
+    // The child was reachable only through the superseded index, so it is unreachable too — and
+    // goes on the same run rather than on the run after the index has gone.
+    MirrorStore mirror = seedMirror();
+    rebindMirrorTag(mirror);
+
+    EvictionPlan plan = engine.plan(evictor, WINDOW, Instant.now());
+    CacheEvictor.Applied applied = evictor.delete(plan, blobId -> false);
+
+    List<String> both =
+        java.util.stream.Stream.of(mirror.index(), mirror.child())
+            .map(digest -> MIRROR_IMAGE + "@sha256:" + digest)
+            .sorted()
+            .toList();
+    assertEquals(both, identities(plan.dead()));
+    assertTrue(
+        plan.dead().stream()
+            .allMatch(
+                dead ->
+                    dead.regardlessOfWindow() && dead.rule().equals(OciMirrorEvictor.SUPERSEDED)));
+    assertEquals(2, plan.condemnedRegardlessOfWindow());
+    assertEquals(both, identities(applied.deleted()));
+    ociManifests.getEntityManager().clear();
+    assertTrue(ociManifests.findOne(MIRROR_REPO, MIRROR_IMAGE, mirror.index()).isEmpty());
+    assertTrue(ociManifests.findOne(MIRROR_REPO, MIRROR_IMAGE, mirror.child()).isEmpty());
+  }
+
+  @Test
+  void aChildTheCurrentIndexStillListsIsJudgedByTheWindowAndStaysWhileYoung() throws Exception {
+    // Reachability is the closure, not the tag alone. The tag moves to a new index that still lists
+    // the seeded child: the old index is superseded, the child is not — it keeps the lazy-pull rule.
+    MirrorStore mirror = seedMirror();
+    long childSize =
+        ociManifests.findOne(MIRROR_REPO, MIRROR_IMAGE, mirror.child()).orElseThrow().size;
+    byte[] indexBytes = indexManifest(Map.of(mirror.child(), childSize));
+    String index = store(indexBytes);
+    mirrorManifestRow(index, indexBytes, OciMediaTypes.OCI_INDEX_V1);
+    rebindMirrorTag("jdk-25", index);
+
+    EvictionPlan plan = engine.plan(evictor, WINDOW, Instant.now());
+
+    assertEquals(List.of(MIRROR_IMAGE + "@sha256:" + mirror.index()), identities(plan.dead()));
+    assertEquals(
+        List.of(MIRROR_IMAGE + ":jdk-25", MIRROR_IMAGE + "@sha256:" + mirror.child()).stream()
+            .sorted()
+            .toList(),
+        identities(plan.kept()));
+    assertEquals(
+        CacheEviction.keptAccessed(WINDOW),
+        judged(plan.kept(), MIRROR_IMAGE + "@sha256:" + mirror.child()).rule());
+  }
+
+  @Test
+  void aSupersededManifestOverAYoungBlobIsWithheldWholeByTheRun() throws Exception {
+    // Superseded outranks the window, never the grace window: a row deleted over a young file would
+    // strand that file row-less for good.
+    MirrorStore mirror = seedMirror();
+    rebindMirrorTag(mirror);
+    backdate(mirror.child(), Duration.ZERO);
+
+    CacheEvictionSweep.SweepReport report = sweep.run();
+
+    CacheEvictionSweep.TypeResult oci = report.type(OciMirrorProfile.KEY);
+    assertEquals(2, oci.condemned());
+    assertEquals(2, oci.superseded());
+    assertEquals(0, oci.deleted());
+    assertEquals(2, oci.withheldByGraceWindow(), "the index and the child, both over that blob");
+    ociManifests.getEntityManager().clear();
+    assertTrue(ociManifests.findOne(MIRROR_REPO, MIRROR_IMAGE, mirror.index()).isPresent());
+    assertTrue(ociManifests.findOne(MIRROR_REPO, MIRROR_IMAGE, mirror.child()).isPresent());
+    assertTrue(blobStore.exists(mirror.child()));
+  }
+
+  @Test
+  void layersTheSupersededAndTheNewManifestShareSurviveTheRun() throws Exception {
+    // The census's half of the bargain. The superseded rows go and their own bytes with them; the
+    // config and layer the new manifest still names stay, because the sweep subtracts across every
+    // survivor.
+    MirrorStore mirror = seedMirror();
+    Rebound rebound = rebindMirrorTag(mirror);
+
+    CacheEvictionSweep.SweepReport report = sweep.run();
+
+    assertEquals(2, report.type(OciMirrorProfile.KEY).deleted());
+    assertFalse(blobStore.exists(mirror.index()), "the superseded index's own bytes are freed");
+    assertFalse(blobStore.exists(mirror.child()), "and so are the unreachable child's");
+    assertTrue(blobStore.exists(mirror.layer()), "the shared layer is still served");
+    assertTrue(blobStore.exists(mirror.config()), "and so is the shared config");
+    assertTrue(blobStore.exists(rebound.newLayer()));
+    assertTrue(blobStore.exists(rebound.manifest()));
+  }
+
+  @Test
   void aStoreWithNoMirroredImageIsAnEmptyPlanRatherThanAFailure() throws Exception {
     // The shipped state of a deployment that has not pulled anything through yet. The three mirror
     // namespaces are there from V1 and hold nothing.
@@ -153,5 +269,12 @@ class OciMirrorEvictionTest extends EvictionFixture {
     assertEquals(List.of(), plan.kept());
     assertEquals(List.of(), plan.dead());
     assertEquals(Set.of(), plan.blobsRetained());
+  }
+
+  private static JudgedIdentity judged(List<JudgedIdentity> lines, String identity) {
+    return lines.stream()
+        .filter(line -> line.identity().equals(identity))
+        .findFirst()
+        .orElseThrow(() -> new AssertionError(identity + " not in " + identities(lines)));
   }
 }

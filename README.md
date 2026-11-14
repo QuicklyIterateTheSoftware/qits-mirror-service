@@ -173,9 +173,15 @@ What each type counts as an identity, and how it goes:
   there is no half-version to prevent.
 - **OCI** — a cached tag, and a manifest no tag names. Both, because upstream drift
   leaves both behind: a tag moves, and the manifest it used to name becomes a row
-  nobody can reach. A child of a still-tagged index may age out on its own; its bytes
-  survive as long as the index needs them, because the index's closure still names
-  them.
+  nobody can reach. **Such a superseded manifest — one outside the closure of every
+  manifest a tag names now — is condemned on the next run whatever its age**, and a
+  superseded index takes its unreachable children with it; waiting out the window
+  parked a gigabyte per move of a tag like `jdk-25` for a month. It is the one
+  verdict that outranks the window, and the grace window and the blob sweep below
+  still apply to it, so layers it shares with the new manifest stay. A child of a
+  still-tagged index is reachable and keeps the window: it may age out on its own,
+  and its bytes survive as long as the index needs them, because the index's
+  closure still names them.
 
 Two mechanisms sit under all three. **The grace window** (`qits.artifacts.gc.blob-grace-period`,
 seven days, read off `blob.stored_at`) gates identity rows and not only blob
@@ -186,7 +192,9 @@ frees storage, and it carries no policy: a blob dies only when no type reaches i
 any more, checked again against a census taken after the row deletions and once
 more inside the store's per-blob advisory lock.
 
-Every run leaves one log line with the counts per type and for the blob loop.
+Every run leaves one log line with the counts per type and for the blob loop; a type
+whose condemned include superseded identities says how many, as in
+`OCI_MIRROR=3 condemned (2 superseded)/3 deleted/1 kept`.
 
 ## Build
 

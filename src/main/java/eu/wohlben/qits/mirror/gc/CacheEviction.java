@@ -9,7 +9,8 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * The engine: delete everything unaccessed past the window, keep everything else.
+ * The engine: delete everything unaccessed past the window, and everything its type says nothing can
+ * reach any more; keep everything else.
  *
  * <p>It is short because a cache has nothing to protect structurally. Every byte this service holds
  * came from upstream and can be fetched again, so the only question worth asking is whether anything
@@ -20,6 +21,15 @@ import java.util.Set;
  * access time is {@code max(created/updated/fetched, accessed_at)} — creation counts as a first
  * access, which is what keeps a tag cached ten minutes ago from reading as never-read. The evictor
  * computes it ({@link CachedIdentity#lastAccessAt()}); this engine only compares it.
+ *
+ * <p><b>Unreachable is the one verdict that outranks the window, and the engine does not reach it
+ * itself.</b> An identity no coordinate of its type can name any more — a mirrored manifest an
+ * upstream rebind left behind — is not "unaccessed lately" but unaccessible for good, and waiting
+ * out a window for it only parks its bytes on disk for a month. Whether something is reachable is a
+ * protocol fact, so the evictor decides it and says so ({@link CachedIdentity#condemnation()}); the
+ * engine condemns that identity on this run, echoes the evictor's sentence, and asks no clock. The
+ * safety below the plan is unchanged by it: the grace window still withholds an identity over young
+ * bytes, and the blob sweep still keeps every blob a survivor names.
  *
  * <p><b>No release rule lives here, deliberately.</b> A cache's content has no releases of
  * <em>ours</em> to protect: a mirrored {@code jdk-25} is upstream's release, and keeping it forever
@@ -42,7 +52,8 @@ public final class CacheEviction {
     return "cache: delete every identity unaccessed for longer than "
         + iso(window)
         + ". Creation counts as the first access, so nothing is eligible before the window has"
-        + " passed since it was cached.";
+        + " passed since it was cached — unless its type says nothing can reach it any more,"
+        + " which condemns it at once.";
   }
 
   /** The sentence on a kept line. */
@@ -71,7 +82,12 @@ public final class CacheEviction {
     Set<String> retained = new HashSet<>();
 
     for (CachedIdentity candidate : evictor.enumerate()) {
-      if (candidate.unaccessedSince(cut)) {
+      if (candidate.condemnedRegardlessOfWindow()) {
+        dead.add(
+            new JudgedIdentity(
+                candidate.repository(), candidate.identity(), candidate.condemnation(), true));
+        released.addAll(candidate.blobs());
+      } else if (candidate.unaccessedSince(cut)) {
         dead.add(
             new JudgedIdentity(
                 candidate.repository(), candidate.identity(), deadUnaccessed(window)));

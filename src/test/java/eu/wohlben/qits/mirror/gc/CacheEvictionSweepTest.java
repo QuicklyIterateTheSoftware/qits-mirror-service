@@ -113,4 +113,16 @@ class CacheEvictionSweepTest extends EvictionFixture {
     assertTrue(line.contains("blobs=1 unlinked"), line);
     assertTrue(line.contains(Integer.toString(NPM_COLD_TARBALL) + " bytes"), line);
   }
+
+  @Test
+  void theLineSaysHowManyOfTheCondemnedWereSupersededRatherThanCold() throws Exception {
+    // A rebind's leftovers die young, and the line is where an operator reads that a disk shrank
+    // because of upstream drift rather than because nobody pulled.
+    rebindMirrorTag(seedMirror());
+
+    String line = CacheEvictionSweep.summary(sweep.run());
+
+    assertTrue(
+        line.contains(OciMirrorProfile.KEY + "=2 condemned (2 superseded)/2 deleted/1 kept"), line);
+  }
 }

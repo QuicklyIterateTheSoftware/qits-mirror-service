@@ -304,6 +304,57 @@ abstract class EvictionFixture {
     return new MirrorStore(config, layer, child, index, absentChild);
   }
 
+  static final int REBOUND_LAYER = 800;
+
+  /** What {@link #rebindMirrorTag} bound the tag to. */
+  record Rebound(String manifest, String newLayer) {}
+
+  /**
+   * Upstream moves {@code jdk-25}, and the next pull binds it to new bytes: a single-arch image
+   * manifest over the seeded config and layer plus one layer of its own.
+   *
+   * <p>The seeded index and its child are left as rows no tag names any more, which is exactly the
+   * state a moving tag leaves behind. The shared config and layer are the case the blob census
+   * exists for: they are released by the superseded child and still named by the new manifest.
+   */
+  Rebound rebindMirrorTag(MirrorStore mirror) {
+    String newLayer = store(filled(REBOUND_LAYER, (byte) 8));
+    byte[] bytes =
+        imageManifest(
+            mirror.config(),
+            Map.of(mirror.layer(), (long) MIRROR_LAYER, newLayer, (long) REBOUND_LAYER),
+            MIRROR_CONFIG);
+    String manifest = store(bytes);
+    for (String blobId : List.of(newLayer, manifest)) {
+      backdate(blobId, Duration.ofDays(30));
+    }
+    mirrorManifestRow(manifest, bytes, OciMediaTypes.OCI_MANIFEST_V1);
+    rebindMirrorTag("jdk-25", manifest);
+    return new Rebound(manifest, newLayer);
+  }
+
+  /** Persists one more mirror manifest row over bytes the case already stored. */
+  void mirrorManifestRow(String digest, byte[] bytes, String mediaType) {
+    QuarkusTransaction.requiringNew()
+        .run(() -> ociManifests.persist(mirrorManifest(digest, bytes.length, mediaType)));
+  }
+
+  /** Points a mirrored tag at another manifest, as a pull after an upstream move does. */
+  void rebindMirrorTag(String tag, String digest) {
+    Instant now = Instant.now();
+    QuarkusTransaction.requiringNew()
+        .run(
+            () ->
+                ociTags.update(
+                    "manifestDigest = ?1, updatedAt = ?2, accessedAt = ?2 where repository = ?3"
+                        + " and imageName = ?4 and tag = ?5",
+                    digest,
+                    now,
+                    MIRROR_REPO,
+                    MIRROR_IMAGE,
+                    tag));
+  }
+
   /**
    * Ages every mirror row — tags and manifests, both timestamps each — so the eviction window bites.
    *

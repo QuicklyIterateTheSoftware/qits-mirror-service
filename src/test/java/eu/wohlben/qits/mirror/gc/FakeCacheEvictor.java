@@ -28,6 +28,12 @@ final class FakeCacheEvictor implements CacheEvictor {
     return this;
   }
 
+  /** Adds one identity this type condemns outright, whatever its access time says. */
+  FakeCacheEvictor condemn(String identity, Instant lastAccessAt, String reason, String... blobs) {
+    candidates.add(CachedIdentity.condemned(REPO, identity, lastAccessAt, Set.of(blobs), reason));
+    return this;
+  }
+
   @Override
   public String typeKey() {
     return "FAKE_CACHE";

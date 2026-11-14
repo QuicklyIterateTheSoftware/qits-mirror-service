@@ -85,6 +85,8 @@ public class CacheEvictionSweep {
    * @param typeKey the stored type key
    * @param window the window it was judged against, or null when it failed before planning
    * @param condemned identities the plan condemned
+   * @param superseded how many of those its type condemned regardless of the window, because
+   *     nothing can reach them any more; a subset of {@code condemned}, never added to it
    * @param kept identities it kept
    * @param deleted rows actually gone — zero on a dry run
    * @param withheldByGraceWindow identities left whole because a blob they release is still young
@@ -96,6 +98,7 @@ public class CacheEvictionSweep {
       String typeKey,
       Duration window,
       int condemned,
+      int superseded,
       int kept,
       int deleted,
       int withheldByGraceWindow,
@@ -155,6 +158,7 @@ public class CacheEvictionSweep {
                 evictor.typeKey(),
                 window,
                 plan.dead().size(),
+                plan.condemnedRegardlessOfWindow(),
                 plan.kept().size(),
                 0,
                 0,
@@ -164,7 +168,16 @@ public class CacheEvictionSweep {
       } catch (RuntimeException failed) {
         results.add(
             new TypeResult(
-                evictor.typeKey(), null, 0, 0, 0, 0, List.of(), message(failed), evictor.note()));
+                evictor.typeKey(),
+                null,
+                0,
+                0,
+                0,
+                0,
+                0,
+                List.of(),
+                message(failed),
+                evictor.note()));
       }
     }
 
@@ -207,8 +220,11 @@ public class CacheEvictionSweep {
         line.append("failed(").append(type.failure()).append(')');
         continue;
       }
-      line.append(type.condemned())
-          .append(" condemned/")
+      line.append(type.condemned()).append(" condemned");
+      if (type.superseded() > 0) {
+        line.append(" (").append(type.superseded()).append(" superseded)");
+      }
+      line.append('/')
           .append(type.deleted())
           .append(" deleted/")
           .append(type.kept())
@@ -269,6 +285,7 @@ public class CacheEvictionSweep {
                 result.typeKey(),
                 result.window(),
                 result.condemned(),
+                result.superseded(),
                 result.kept(),
                 applied.deleted().size(),
                 applied.withheldByGraceWindow().size(),
@@ -286,6 +303,7 @@ public class CacheEvictionSweep {
                 result.typeKey(),
                 result.window(),
                 result.condemned(),
+                result.superseded(),
                 result.kept(),
                 result.deleted(),
                 result.withheldByGraceWindow(),

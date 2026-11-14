@@ -26,12 +26,23 @@ import java.util.Set;
  * as a row nobody can reach by any coordinate. Enumerating only tags would hide exactly the thing
  * that grows.
  *
+ * <p><b>A manifest no current tag reaches is superseded, and it dies on the next run whatever its
+ * age.</b> Reachable means named by a tag, or inside the closure of a manifest a tag names — an
+ * index's children are reachable through it. Anything else is what a rebind left behind: nothing
+ * can pull it by tag, and a pull by digest of an upstream-superseded manifest is a miss the mirror
+ * can serve again from upstream. Judging it by the window instead kept every superseded {@code
+ * jdk-25} for a month, a gigabyte each, and that is how a disk filled. A superseded index takes its
+ * unreachable children with it on the same run, since none of them is reachable either. The grace
+ * window still withholds one whose bytes are young, and the blob sweep still keeps every layer it
+ * shares with the manifest that replaced it.
+ *
  * <p><b>A manifest a tag names is not a candidate of its own.</b> Its tag is its identity; the row
  * dies when the tag does, on a later run once it is untagged. Listing both would let the window
  * condemn a manifest under a live tag — which {@code collectManifest} refuses anyway, so the only
  * outcome would be an error column nobody can act on.
  *
- * <p><b>A child of a cached index is a candidate, and evicting one is not a corruption.</b> A pull
+ * <p><b>A child of a cached index is a candidate under the window, and evicting one is not a
+ * corruption.</b> A pull
  * arrives index-first and fetches children lazily, one per architecture actually asked for, so a
  * mirror index referencing a child with no local row is the normal state of a partially-pulled
  * image. An architecture nobody has pulled in a month therefore ages out and is re-fetched on the
@@ -53,6 +64,10 @@ public class OciMirrorEvictor implements CacheEvictor {
 
   /** The digest form the identities here are spelled with. */
   private static final String DIGEST_PREFIX = "@sha256:";
+
+  /** The sentence on a manifest condemned because no current tag reaches it. */
+  static final String SUPERSEDED =
+      "superseded: no tag reaches this manifest, so it is condemned regardless of the window";
 
   @Inject CacheRoots roots;
   @Inject OciTagRepository tags;
@@ -107,25 +122,27 @@ public class OciMirrorEvictor implements CacheEvictor {
       byDigest.put(manifest.digest, manifest);
     }
     Set<String> tagged = new HashSet<>();
+    Set<String> reachable = new HashSet<>();
     for (OciTag tag : tags.listByImage(repository, image)) {
       tagged.add(tag.manifestDigest);
+      Set<String> closure = blobsOf(byDigest.get(tag.manifestDigest));
+      reachable.add(tag.manifestDigest);
+      reachable.addAll(closure);
       candidates.add(
           new CachedIdentity(
-              repository,
-              image + ":" + tag.tag,
-              latest(tag.updatedAt, tag.accessedAt),
-              blobsOf(byDigest.get(tag.manifestDigest))));
+              repository, image + ":" + tag.tag, latest(tag.updatedAt, tag.accessedAt), closure));
     }
     for (OciManifest manifest : byDigest.values()) {
       if (tagged.contains(manifest.digest)) {
         continue;
       }
+      String identity = image + DIGEST_PREFIX + manifest.digest;
+      Instant access = latest(manifest.createdAt, manifest.accessedAt);
+      Set<String> closure = footprints.of(manifest).keySet();
       candidates.add(
-          new CachedIdentity(
-              repository,
-              image + DIGEST_PREFIX + manifest.digest,
-              latest(manifest.createdAt, manifest.accessedAt),
-              footprints.of(manifest).keySet()));
+          reachable.contains(manifest.digest)
+              ? new CachedIdentity(repository, identity, access, closure)
+              : CachedIdentity.condemned(repository, identity, access, closure, SUPERSEDED));
     }
   }
 
