@@ -34,6 +34,12 @@ final class FakeCacheEvictor implements CacheEvictor {
     return this;
   }
 
+  /** Adds one identity this type keeps outright, whatever its access time says. */
+  FakeCacheEvictor keep(String identity, Instant lastAccessAt, String reason, String... blobs) {
+    candidates.add(CachedIdentity.kept(REPO, identity, lastAccessAt, Set.of(blobs), reason));
+    return this;
+  }
+
   @Override
   public String typeKey() {
     return "FAKE_CACHE";

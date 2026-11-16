@@ -143,17 +143,22 @@ evicted**, and its blobs are reclaimed once no surviving row of any type names t
 Creation counts as the first access, so nothing is eligible before the window has
 passed since it was cached.
 
-There is no route and no button. The policy is configuration and the only trigger is
-the clock:
+There is no button and no schedule. The policy is configuration, and the only trigger
+is qits-orchestrator calling `POST /mirror/api/gc/sweep` (`qits:system`) with the image
+pins it read from qits-maintenance in the body — `{"pins":{"images":[{"name":"node",
+"version":"24-alpine"},…]},"dryRun":false}`. The answer is the run's counts. Pins absent
+(the orchestrator's read failed) keep the window rule for tags; an empty `images` list,
+or a malformed body, is a 400 and nothing runs; a second call while a run is in flight
+is a 409.
 
 | Key | Ships as |
 |---|---|
 | `qits.mirror.eviction.enabled` | `true` |
 | `qits.mirror.eviction.dry-run` | `false` — plan and report, delete nothing |
-| `qits.mirror.eviction.cron` | `0 20 3 * * ?` |
 | `qits.mirror.eviction.window.npm-proxy` | `P30D` |
 | `qits.mirror.eviction.window.maven-proxy` | `P90D` |
 | `qits.mirror.eviction.window.oci-mirror` | `P30D` |
+| `qits.mirror.eviction.oci-mirror.config-pins` | `hub/nicolargo/glances:4.5.6-full,moby/buildkit:v0.33.0` — images pinned in service config that no maintenance scan sees |
 
 maven's window is longer because a library is resolved when something builds
 *against* it, and that cadence is not a month. A type with no window here does not
@@ -182,6 +187,13 @@ What each type counts as an identity, and how it goes:
   still-tagged index is reachable and keeps the window: it may age out on its own,
   and its bytes survive as long as the index needs them, because the index's
   closure still names them.
+  **When the sweep carries image pins, the mirror keeps only what is pinned**
+  (qits-2253): a tag some pin names is kept whatever its age, and a tag no pin names
+  is condemned whatever its age (`unpinned: no image pin names this tag`). A pin
+  names a tag the way a pull resolves it — a first segment naming a mirror namespace
+  (`hub/library/postgres`, `quay/quarkus/x`) is that namespace, anything else is a Hub
+  image (`moby/buildkit`), and a single segment is Hub's `library/` (`node`). Without
+  pins, tags keep the window.
 
 Two mechanisms sit under all three. **The grace window** (`qits.artifacts.gc.blob-grace-period`,
 seven days, read off `blob.stored_at`) gates identity rows and not only blob
@@ -193,8 +205,9 @@ any more, checked again against a census taken after the row deletions and once
 more inside the store's per-blob advisory lock.
 
 Every run leaves one log line with the counts per type and for the blob loop; a type
-whose condemned include superseded identities says how many, as in
-`OCI_MIRROR=3 condemned (2 superseded)/3 deleted/1 kept`.
+whose condemned include superseded or unpinned identities says how many, and whose
+kept include pinned ones says that too, as in
+`OCI_MIRROR=3 condemned (1 superseded, 2 unpinned)/3 deleted/12 kept (7 pinned)`.
 
 ## Build
 
@@ -308,8 +321,8 @@ request began. `DbRetry` covers one that dies mid-flight, and it has exactly one
 site here: the explorer's two reads, which a caller is waiting on. Nothing else needs
 it. A pull writes through `qits-registries`, so a write seam a cutover can reach is in
 those libraries; what is written here is the boot seeder (a failed boot is a restart)
-and the eviction sweep (a background chore that logs and retries on the next schedule),
-and neither has anyone waiting.
+and the eviction sweep (a housekeeping run qits-orchestrator calls and retries on its
+next tick), and neither has a person waiting.
 
 This module compiles to a GraalVM native image, which is what a deployment runs:
 

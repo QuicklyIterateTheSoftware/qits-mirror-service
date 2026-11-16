@@ -14,7 +14,8 @@ import java.util.List;
  * <p><b>No rule lives in an implementation of this.</b> The rule is {@link CacheEviction}'s, written
  * once, because all three types run the same one: a cached entry unused for longer than the window
  * is evicted. An implementation contributes an enumeration and a deletion, which is all that differs
- * between npm, maven and OCI.
+ * between npm, maven and OCI — plus, where only the type can know it, a verdict on an identity
+ * the window is then not asked about: unreachable, unpinned or pinned ({@link CachedIdentity}).
  *
  * <p>Registering one is a CDI bean of this type and nothing else. Exactly one may claim a type key.
  */
@@ -30,6 +31,18 @@ public interface CacheEvictor {
    * would be the one nobody could review.
    */
   List<CachedIdentity> enumerate();
+
+  /**
+   * {@link #enumerate()}, judged against the image pins the run was handed (qits-2253).
+   *
+   * <p>Only a type whose identities a pin can name overrides this — the OCI mirror's tags; the
+   * package caches have no pins and answer their plain enumeration. Read-only, like the other.
+   *
+   * @param pins the run's pins, or {@link ImagePins#ABSENT} when the caller could not read them
+   */
+  default List<CachedIdentity> enumerate(ImagePins pins) {
+    return enumerate();
+  }
 
   /**
    * A standing sentence a report carries beside this type's line, or null.

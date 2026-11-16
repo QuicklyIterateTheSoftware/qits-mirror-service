@@ -2,6 +2,7 @@ package eu.wohlben.qits.mirror.gc;
 
 import eu.wohlben.qits.artifacts.control.OciManifestFootprints;
 import eu.wohlben.qits.artifacts.control.OciMirrorProfile;
+import eu.wohlben.qits.artifacts.control.OciMirrorUpstreams;
 import eu.wohlben.qits.artifacts.control.OciRegistryCollection;
 import eu.wohlben.qits.artifacts.entity.OciManifest;
 import eu.wohlben.qits.artifacts.entity.OciTag;
@@ -12,6 +13,7 @@ import jakarta.inject.Singleton;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -35,6 +37,21 @@ import java.util.Set;
  * unreachable children with it on the same run, since none of them is reachable either. The grace
  * window still withholds one whose bytes are young, and the blob sweep still keeps every layer it
  * shares with the manifest that replaced it.
+ *
+ * <p><b>When the run carries image pins, a mirrored tag is judged by them and not by the window</b>
+ * (qits-2253; the owner's rule: the mirror keeps only what is pinned). A tag some pin names is kept
+ * however long nobody pulled it; a tag no pin names is condemned however recently somebody did,
+ * with the sentence {@value #UNPINNED}. The pins are qits-maintenance's — every {@code FROM} line on
+ * the estate, read by qits-orchestrator and handed to the sweep door in its body, so this service
+ * never calls another — unioned with {@code qits.mirror.eviction.oci-mirror.config-pins}, the
+ * images pinned in service configuration that no maintenance scan reads. A pin names a cached tag
+ * the way a pull would ({@link MirrorTagRef#resolve}), against the mirror namespaces the repository
+ * table lists today. <b>A run whose caller could not read the pins carries none</b>, and then every
+ * tag keeps the window rule and nothing new is condemned: a pin read that failed is not a statement
+ * that nothing is pinned. Only tags are pinned. A manifest is never a pin's subject: an index's
+ * children and a superseded manifest keep the rules above, and the manifest an unpinned tag named
+ * becomes superseded — and goes — on the run after its tag is deleted. The grace window withholds an
+ * unpinned tag over young bytes exactly as it withholds any other.
  *
  * <p><b>A manifest a tag names is not a candidate of its own.</b> Its tag is its identity; the row
  * dies when the tag does, on a later run once it is untagged. Listing both would let the window
@@ -69,11 +86,20 @@ public class OciMirrorEvictor implements CacheEvictor {
   static final String SUPERSEDED =
       "superseded: no tag reaches this manifest, so it is condemned regardless of the window";
 
+  /** The sentence on a tag condemned because the run's pins name every tag but it. */
+  static final String UNPINNED = "unpinned: no image pin names this tag";
+
+  /** The sentence on a tag kept because a pin names it. */
+  static final String PINNED =
+      "pinned: an image pin names this tag, so it is kept regardless of the window";
+
   @Inject CacheRoots roots;
   @Inject OciTagRepository tags;
   @Inject OciManifestRepository manifests;
   @Inject OciManifestFootprints footprints;
   @Inject OciRegistryCollection registry;
+  @Inject OciMirrorUpstreams upstreams;
+  @Inject EvictionConfig config;
 
   @Override
   public String typeKey() {
@@ -82,13 +108,49 @@ public class OciMirrorEvictor implements CacheEvictor {
 
   @Override
   public List<CachedIdentity> enumerate() {
+    return enumerate(ImagePins.ABSENT);
+  }
+
+  @Override
+  public List<CachedIdentity> enumerate(ImagePins pins) {
+    List<String> repositories = roots.of(typeKey());
+    Set<MirrorTagRef> pinned = pinned(pins, repositories);
     List<CachedIdentity> candidates = new ArrayList<>();
-    for (String repository : roots.of(typeKey())) {
+    for (String repository : repositories) {
       for (String image : manifests.listImageNames(repository)) {
-        collect(repository, image, candidates);
+        collect(repository, image, pinned, candidates);
       }
     }
     return List.copyOf(candidates);
+  }
+
+  /**
+   * Every cached tag the run's pins name, or null when the run carries none — the window then
+   * judges every tag, and the configured pins are not consulted either.
+   *
+   * <p>A configured entry that does not parse fails this type's line, which is the honest answer:
+   * running without it would condemn the tag it was written to keep.
+   */
+  Set<MirrorTagRef> pinned(ImagePins pins, List<String> repositories) {
+    if (!pins.present()) {
+      return null;
+    }
+    List<ImagePins.ImagePin> all = new ArrayList<>(pins.images());
+    for (String entry : config.ociMirror().configPins().orElse(List.of())) {
+      if (!entry.isBlank()) {
+        all.add(ImagePins.ImagePin.parse(entry));
+      }
+    }
+    Set<String> namespaces = Set.copyOf(repositories);
+    String hub = upstreams.hub().map(upstream -> upstream.slug).orElse(null);
+    Set<MirrorTagRef> resolved = new LinkedHashSet<>();
+    for (ImagePins.ImagePin pin : all) {
+      MirrorTagRef ref = MirrorTagRef.resolve(pin, namespaces, hub);
+      if (ref != null) {
+        resolved.add(ref);
+      }
+    }
+    return resolved;
   }
 
   /**
@@ -115,8 +177,13 @@ public class OciMirrorEvictor implements CacheEvictor {
     return new Applied(deleted, withheld, errors);
   }
 
-  /** One namespace's image: every cached tag, then every manifest no tag names. */
-  private void collect(String repository, String image, List<CachedIdentity> candidates) {
+  /**
+   * One namespace's image: every cached tag, then every manifest no tag names.
+   *
+   * @param pinned the tags the run's pins name, or null to judge every tag by the window
+   */
+  private void collect(
+      String repository, String image, Set<MirrorTagRef> pinned, List<CachedIdentity> candidates) {
     Map<String, OciManifest> byDigest = new LinkedHashMap<>();
     for (OciManifest manifest : manifests.listByImage(repository, image)) {
       byDigest.put(manifest.digest, manifest);
@@ -128,9 +195,15 @@ public class OciMirrorEvictor implements CacheEvictor {
       Set<String> closure = blobsOf(byDigest.get(tag.manifestDigest));
       reachable.add(tag.manifestDigest);
       reachable.addAll(closure);
-      candidates.add(
-          new CachedIdentity(
-              repository, image + ":" + tag.tag, latest(tag.updatedAt, tag.accessedAt), closure));
+      String identity = image + ":" + tag.tag;
+      Instant access = latest(tag.updatedAt, tag.accessedAt);
+      if (pinned == null) {
+        candidates.add(new CachedIdentity(repository, identity, access, closure));
+      } else if (pinned.contains(new MirrorTagRef(repository, image, tag.tag))) {
+        candidates.add(CachedIdentity.kept(repository, identity, access, closure, PINNED));
+      } else {
+        candidates.add(CachedIdentity.condemned(repository, identity, access, closure, UNPINNED));
+      }
     }
     for (OciManifest manifest : byDigest.values()) {
       if (tagged.contains(manifest.digest)) {

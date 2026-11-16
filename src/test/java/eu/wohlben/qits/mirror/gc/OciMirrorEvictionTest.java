@@ -2,6 +2,8 @@ package eu.wohlben.qits.mirror.gc;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import eu.wohlben.qits.artifacts.control.OciMediaTypes;
@@ -228,7 +230,7 @@ class OciMirrorEvictionTest extends EvictionFixture {
     rebindMirrorTag(mirror);
     backdate(mirror.child(), Duration.ZERO);
 
-    CacheEvictionSweep.SweepReport report = sweep.run();
+    CacheEvictionSweep.SweepReport report = sweep.run(ImagePins.ABSENT, false);
 
     CacheEvictionSweep.TypeResult oci = report.type(OciMirrorProfile.KEY);
     assertEquals(2, oci.condemned());
@@ -249,7 +251,7 @@ class OciMirrorEvictionTest extends EvictionFixture {
     MirrorStore mirror = seedMirror();
     Rebound rebound = rebindMirrorTag(mirror);
 
-    CacheEvictionSweep.SweepReport report = sweep.run();
+    CacheEvictionSweep.SweepReport report = sweep.run(ImagePins.ABSENT, false);
 
     assertEquals(2, report.type(OciMirrorProfile.KEY).deleted());
     assertFalse(blobStore.exists(mirror.index()), "the superseded index's own bytes are freed");
@@ -269,6 +271,173 @@ class OciMirrorEvictionTest extends EvictionFixture {
     assertEquals(List.of(), plan.kept());
     assertEquals(List.of(), plan.dead());
     assertEquals(Set.of(), plan.blobsRetained());
+  }
+
+  // === qits-2253: the mirror keeps only what is pinned ==========================================
+
+  private static ImagePins pins(String... nameColonTag) {
+    return ImagePins.of(
+        java.util.Arrays.stream(nameColonTag).map(ImagePins.ImagePin::parse).toList());
+  }
+
+  private static final String MIRROR_PIN =
+      "quay/quarkus/ubi9-quarkus-mandrel-builder-image:jdk-25";
+
+  @Test
+  void aPinnedTagNobodyPulledForMonthsIsKeptAndSaysWhy() throws Exception {
+    // The owner's rule: what is pinned stays, however cold. The quay/… form names the quay
+    // namespace and the rest of the path is the image inside it.
+    MirrorStore mirror = seedMirror();
+    ageMirrorRows(Duration.ofDays(200));
+
+    EvictionPlan plan = engine.plan(evictor, WINDOW, Instant.now(), pins(MIRROR_PIN));
+
+    JudgedIdentity tag = judged(plan.kept(), MIRROR_IMAGE + ":jdk-25");
+    assertEquals(OciMirrorEvictor.PINNED, tag.rule());
+    assertTrue(tag.regardlessOfWindow());
+    assertEquals(
+        List.of(MIRROR_IMAGE + "@sha256:" + mirror.child()),
+        identities(plan.dead()),
+        "the index's lazily pulled child keeps the window rule — only tags are pinned");
+    assertEquals(CacheEviction.deadUnaccessed(WINDOW), plan.dead().get(0).rule());
+  }
+
+  @Test
+  void aTagNoPinNamesDiesTheMinuteItWasCachedAndSaysWhy() throws Exception {
+    // The other half: freshly pulled, inside every window, and named by no pin — condemned.
+    seedMirror();
+
+    EvictionPlan plan = engine.plan(evictor, WINDOW, Instant.now(), pins("node:24-alpine"));
+
+    JudgedIdentity tag = judged(plan.dead(), MIRROR_IMAGE + ":jdk-25");
+    assertEquals(OciMirrorEvictor.UNPINNED, tag.rule());
+    assertEquals("unpinned: no image pin names this tag", tag.rule());
+    assertTrue(tag.regardlessOfWindow());
+  }
+
+  @Test
+  void aBareHubNamePinsTheLibraryImageItPullsAs() throws Exception {
+    // `FROM node:24-alpine` is a Hub pull of library/node, cached in the hub namespace; the pin
+    // keeps exactly that tag and no sibling of it.
+    seedImage("hub", "library/node", "24-alpine", (byte) 21);
+    seedImage("hub", "library/node", "22-alpine", (byte) 22);
+
+    EvictionPlan plan = engine.plan(evictor, WINDOW, Instant.now(), pins("node:24-alpine"));
+
+    assertEquals(OciMirrorEvictor.PINNED, judged(plan.kept(), "library/node:24-alpine").rule());
+    assertEquals(OciMirrorEvictor.UNPINNED, judged(plan.dead(), "library/node:22-alpine").rule());
+  }
+
+  @Test
+  void aPinSpelledWithTheHubNamespaceNamesTheSameTag() throws Exception {
+    // hub/library/postgres and hub/postgres are one pull, and so one pin.
+    seedImage("hub", "library/postgres", "18.4", (byte) 23);
+    seedImage("hub", "library/postgres", "17.6", (byte) 24);
+
+    EvictionPlan plan =
+        engine.plan(evictor, WINDOW, Instant.now(), pins("hub/library/postgres:18.4", "hub/postgres:17.6"));
+
+    assertEquals(
+        List.of("library/postgres:17.6", "library/postgres:18.4"), identities(plan.kept()));
+    assertEquals(List.of(), plan.dead());
+  }
+
+  @Test
+  void aConfiguredPinKeepsItsTagBesideTheCallersPins() throws Exception {
+    // qits.mirror.eviction.oci-mirror.config-pins ships moby/buildkit:v0.33.0 and
+    // hub/nicolargo/glances:4.5.6-full: images pinned in service config that no maintenance scan
+    // sees. The caller's pins never name them, and they stay all the same.
+    seedImage("hub", "moby/buildkit", "v0.33.0", (byte) 25);
+    seedImage("hub", "nicolargo/glances", "4.5.6-full", (byte) 26);
+    seedImage("hub", "moby/buildkit", "v0.32.0", (byte) 27);
+
+    EvictionPlan plan = engine.plan(evictor, WINDOW, Instant.now(), pins("node:24-alpine"));
+
+    assertEquals(
+        List.of("moby/buildkit:v0.33.0", "nicolargo/glances:4.5.6-full"), identities(plan.kept()));
+    assertEquals(List.of("moby/buildkit:v0.32.0"), identities(plan.dead()));
+  }
+
+  @Test
+  void withoutPinsEveryTagKeepsTheWindowRuleAndNothingNewIsCondemned() throws Exception {
+    // The orchestrator could not read the pins: a failed read is not "nothing is pinned". The young
+    // unpinned tag stays on the window, and so does a configured one — config pins are not read.
+    seedMirror();
+    seedImage("hub", "moby/buildkit", "v0.32.0", (byte) 28);
+
+    EvictionPlan plan = engine.plan(evictor, WINDOW, Instant.now(), ImagePins.ABSENT);
+
+    assertEquals(List.of(), plan.dead());
+    assertEquals(CacheEviction.keptAccessed(WINDOW), judged(plan.kept(), MIRROR_IMAGE + ":jdk-25").rule());
+    assertTrue(plan.kept().stream().noneMatch(JudgedIdentity::regardlessOfWindow));
+  }
+
+  @Test
+  void anUnpinnedTagOverYoungBytesIsWithheldWholeByTheRun() throws Exception {
+    // Unpinned outranks the window, never the grace window — the strand hazard is the same.
+    MirrorStore mirror = seedMirror();
+    backdate(mirror.layer(), Duration.ZERO);
+
+    CacheEvictionSweep.SweepReport report = sweep.run(pins("node:24-alpine"), false);
+
+    CacheEvictionSweep.TypeResult oci = report.type(OciMirrorProfile.KEY);
+    assertEquals(1, oci.unpinned());
+    assertEquals(0, oci.superseded());
+    assertEquals(0, oci.deleted());
+    assertEquals(1, oci.withheldByGraceWindow());
+    ociTags.getEntityManager().clear();
+    assertTrue(ociTags.findOne(MIRROR_REPO, MIRROR_IMAGE, "jdk-25").isPresent(), "the row stays");
+    assertTrue(blobStore.exists(mirror.layer()));
+  }
+
+  @Test
+  void aRunWithPinsDeletesTheUnpinnedTagAndCountsBothSidesOnItsLine() throws Exception {
+    seedMirror();
+    seedImage("hub", "library/node", "24-alpine", (byte) 29);
+
+    CacheEvictionSweep.SweepReport report = sweep.run(pins("node:24-alpine"), false);
+
+    CacheEvictionSweep.TypeResult oci = report.type(OciMirrorProfile.KEY);
+    assertTrue(report.pinsSupplied());
+    assertEquals(1, report.imagePins());
+    assertEquals(1, oci.unpinned());
+    assertEquals(1, oci.pinned());
+    assertEquals(1, oci.deleted());
+    ociTags.getEntityManager().clear();
+    assertTrue(ociTags.findOne(MIRROR_REPO, MIRROR_IMAGE, "jdk-25").isEmpty());
+    assertTrue(ociTags.findOne("hub", "library/node", "24-alpine").isPresent());
+    String line = CacheEvictionSweep.summary(report);
+    assertTrue(line.contains(OciMirrorProfile.KEY + "=1 condemned (1 unpinned)/1 deleted/"), line);
+    assertTrue(line.contains(" kept (1 pinned)"), line);
+  }
+
+  @Test
+  void aDryRunWithPinsSaysWhatWouldGoAndDeletesNothing() throws Exception {
+    MirrorStore mirror = seedMirror();
+
+    CacheEvictionSweep.SweepReport report = sweep.run(pins("node:24-alpine"), true);
+
+    assertTrue(report.dryRun(), "the caller's dryRun is honoured with the config's false");
+    assertEquals(1, report.type(OciMirrorProfile.KEY).unpinned());
+    assertEquals(0, report.type(OciMirrorProfile.KEY).deleted());
+    assertNull(report.disk(), "and nothing compacts");
+    ociTags.getEntityManager().clear();
+    assertTrue(ociTags.findOne(MIRROR_REPO, MIRROR_IMAGE, "jdk-25").isPresent());
+    assertTrue(blobStore.exists(mirror.layer()));
+  }
+
+  @Test
+  void aSecondRunWhileOneIsInFlightIsRefusedAndTouchesNothing() throws Exception {
+    seedMirror();
+    sweep.inFlight().set(true);
+    try {
+      assertThrows(
+          CacheEvictionSweep.SweepInProgress.class, () -> sweep.run(pins("node:24-alpine"), false));
+    } finally {
+      sweep.inFlight().set(false);
+    }
+    ociTags.getEntityManager().clear();
+    assertTrue(ociTags.findOne(MIRROR_REPO, MIRROR_IMAGE, "jdk-25").isPresent());
   }
 
   private static JudgedIdentity judged(List<JudgedIdentity> lines, String identity) {

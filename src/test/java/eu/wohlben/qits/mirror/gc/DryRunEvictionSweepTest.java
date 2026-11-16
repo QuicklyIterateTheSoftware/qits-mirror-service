@@ -35,7 +35,7 @@ class DryRunEvictionSweepTest extends EvictionFixture {
   void aDryRunSaysWhatWouldGoAndLeavesEveryRowAndEveryByteWhereItIs() throws Exception {
     NpmCache npm = seedNpmCache();
 
-    CacheEvictionSweep.SweepReport report = sweep.run();
+    CacheEvictionSweep.SweepReport report = sweep.run(ImagePins.ABSENT, false);
 
     assertTrue(report.dryRun());
     assertEquals(2, report.type(NpmProxyProfile.KEY).condemned(), "the cold version and document");
@@ -54,7 +54,7 @@ class DryRunEvictionSweepTest extends EvictionFixture {
   void theLineSaysItWasADryRunSoNobodyReadsItAsWorkDone() throws Exception {
     seedNpmCache();
 
-    String line = CacheEvictionSweep.summary(sweep.run());
+    String line = CacheEvictionSweep.summary(sweep.run(ImagePins.ABSENT, false));
 
     assertTrue(line.startsWith("Cache eviction (dry run):"), line);
     assertTrue(line.contains("blobs=1 reclaimable"), line);
@@ -75,7 +75,7 @@ class DryRunEvictionSweepTest extends EvictionFixture {
     int open = openSegment();
     assertEquals(1, partitionCount(closed), "the case only says anything if the segment exists");
 
-    CacheEvictionSweep.SweepReport report = sweep.run();
+    CacheEvictionSweep.SweepReport report = sweep.run(ImagePins.ABSENT, false);
 
     assertTrue(report.dryRun());
     assertEquals(1, report.blobPlan().blobCount(), "the dry run would free the doomed tarball");

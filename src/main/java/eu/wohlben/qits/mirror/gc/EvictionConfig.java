@@ -3,7 +3,9 @@ package eu.wohlben.qits.mirror.gc;
 import eu.wohlben.qits.blobstore.entity.RepositoryTypeProfile;
 import io.smallrye.config.ConfigMapping;
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * What the sweep does and how long a cached entry may sit unused before it is eligible:
@@ -23,30 +25,40 @@ import java.util.Map;
 public interface EvictionConfig {
 
   /**
-   * Whether the scheduled sweep does anything at all.
+   * Whether a sweep does anything at all.
    *
-   * <p>The kill switch a deployment reaches for when something is wrong: false leaves the schedule
-   * firing and the run logging that it is disabled, which is a line in the log rather than a silence
-   * somebody has to infer.
+   * <p>The kill switch a deployment reaches for when something is wrong: false makes {@code POST
+   * /mirror/api/gc/sweep} answer 503 naming this key, so the caller's run fails visibly rather than
+   * reporting a sweep that never happened.
    */
   boolean enabled();
 
   /**
-   * Plan and report, delete nothing.
+   * Plan and report, delete nothing — for every sweep, whatever its caller asked.
    *
    * <p>The mode a new deployment runs in until somebody has read a sweep's counts and agreed with
-   * them. It is a property of the run rather than of a caller, because the only caller is a
-   * schedule.
+   * them. A caller can ask for a dry run on its own ({@code "dryRun":true} in the door's body), but
+   * cannot ask this one away: true here outranks a body that says false.
    */
   boolean dryRun();
 
-  /**
-   * When the sweep runs, as a cron expression.
-   *
-   * <p>Mapped here as well as read by {@code @Scheduled}, so the one key has one documented owner
-   * and a deployment that mistypes it fails at boot rather than at three in the morning.
-   */
-  String cron();
+  /** {@code qits.mirror.eviction.oci-mirror.*}: what the mirror's tag rule reads besides the body. */
+  OciMirror ociMirror();
+
+  /** The OCI mirror's own keys. */
+  interface OciMirror {
+
+    /**
+     * Image pins no maintenance scan sees, as {@code name:tag} in the door's name forms ({@code
+     * hub/nicolargo/glances:4.5.6-full}, {@code moby/buildkit:v0.33.0}).
+     *
+     * <p>Unioned with the door's pins <b>only when the door's are present</b>: absent pins mean the
+     * caller could not read them, the tag rule falls back to the window, and a list of two cannot
+     * stand in for the estate's. A stale entry keeps one tag nobody pulls, which costs disk until it
+     * is removed; a missing one costs a re-pull.
+     */
+    Optional<List<String>> configPins();
+  }
 
   /** How long an identity may sit unaccessed before it is eligible, ISO-8601, per wire name. */
   Map<String, Duration> window();

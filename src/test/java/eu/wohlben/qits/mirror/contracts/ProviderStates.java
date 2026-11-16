@@ -3,6 +3,8 @@ package eu.wohlben.qits.mirror.contracts;
 import eu.wohlben.qits.artifacts.control.NpmPackageName;
 import eu.wohlben.qits.artifacts.entity.NpmDistTag;
 import eu.wohlben.qits.artifacts.entity.NpmVersion;
+import eu.wohlben.qits.artifacts.entity.OciManifest;
+import eu.wohlben.qits.artifacts.entity.OciTag;
 import eu.wohlben.qits.blobstore.control.BlobStore;
 import eu.wohlben.qits.maven.ContractMavenUpstream;
 import eu.wohlben.qits.maven.MavenUpstream;
@@ -89,6 +91,19 @@ public class ProviderStates {
   /** An npm package npmjs does not have, and so neither does the cache: the packument answers 404. */
   public static final String NO_NPM_PACKAGE_UPSTREAM = "no npm package of that name upstream";
 
+  /**
+   * qits-orchestrator's sweep (qits-2253): the {@code hub} namespace holds {@code library/node} at
+   * {@code 24-alpine}, which the orchestrator's pins name, and at {@code 22-alpine}, which they do
+   * not — both cached long ago, over bytes past the grace window. Nothing else is cached anywhere.
+   */
+  public static final String A_MIRROR_HOLDING_A_PINNED_AND_AN_UNPINNED_TAG =
+      "a mirror holding a pinned and an unpinned tag";
+
+  static final String MIRROR_REPOSITORY = "hub";
+  static final String MIRROR_IMAGE = "library/node";
+  static final String MIRROR_PINNED_TAG = "24-alpine";
+  static final String MIRROR_UNPINNED_TAG = "22-alpine";
+
   static final String MAVEN_GROUP = "org.example";
   static final String MAVEN_ARTIFACT = "contract-library";
   static final String MAVEN_ABSENT_ARTIFACT = "contract-absent";
@@ -125,6 +140,8 @@ public class ProviderStates {
     states.put(NO_MAVEN_ARTIFACT_UPSTREAM, this::noMavenArtifactUpstream);
     states.put(A_MAVEN_CACHE_HOLDING_METADATA, this::aMavenCacheHoldingMetadata);
     states.put(NO_NPM_PACKAGE_UPSTREAM, this::noNpmPackageUpstream);
+    states.put(
+        A_MIRROR_HOLDING_A_PINNED_AND_AN_UNPINNED_TAG, this::aMirrorHoldingAPinnedAndAnUnpinnedTag);
   }
 
   /** Every state name this provider answers for. */
@@ -275,6 +292,95 @@ public class ProviderStates {
     clearMavenCache();
     ContractNpmUpstream.pointAtTheStub(npmUpstream);
     return npmParams(NPM_ABSENT_PACKAGE);
+  }
+
+  /**
+   * Every cache emptied — rows and blobs, so the sweep's blob figures count only what this state
+   * stores — then two tags of {@code hub/library/node}, each over its own config, layer and
+   * manifest, cached at {@link #CACHED_AT} and stored past the grace window.
+   */
+  private Setup aMirrorHoldingAPinnedAndAnUnpinnedTag() {
+    seeder.ensureDefaults();
+    clearNpmCache();
+    clearMavenCache();
+    for (String table :
+        new String[] {
+          "oci_mirror_tag_check",
+          "oci_tag",
+          "oci_manifest",
+          "npm_version_tombstone",
+          "maven_artifact",
+          "artifact_record",
+          "blob",
+          "blob_content"
+        }) {
+      sql("delete from " + table);
+    }
+    cachedImage(MIRROR_PINNED_TAG, (byte) 41);
+    cachedImage(MIRROR_UNPINNED_TAG, (byte) 42);
+    sql("update blob set stored_at = timestamptz '2026-01-01 00:00:00+00'");
+    return new Setup(Map.of());
+  }
+
+  /** One single-arch {@code hub/library/node} image under {@code tag}, its bytes filled with {@code fill}. */
+  private void cachedImage(String tag, byte fill) {
+    String config = stored(filled(16, fill));
+    String layer = stored(filled(64 + fill, fill));
+    byte[] manifestBytes =
+        ("{\"schemaVersion\":2,\"mediaType\":\"application/vnd.oci.image.manifest.v1+json\","
+                + "\"config\":{\"mediaType\":\"application/vnd.oci.image.config.v1+json\","
+                + "\"digest\":\"sha256:"
+                + config
+                + "\",\"size\":16},\"layers\":[{\"mediaType\":"
+                + "\"application/vnd.oci.image.layer.v1.tar+gzip\",\"digest\":\"sha256:"
+                + layer
+                + "\",\"size\":"
+                + (64 + fill)
+                + "}]}")
+            .getBytes(java.nio.charset.StandardCharsets.UTF_8);
+    String manifest = stored(manifestBytes);
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              OciManifest row = new OciManifest();
+              row.repository = MIRROR_REPOSITORY;
+              row.imageName = MIRROR_IMAGE;
+              row.digest = manifest;
+              row.mediaType = "application/vnd.oci.image.manifest.v1+json";
+              row.size = manifestBytes.length;
+              row.createdAt = CACHED_AT;
+              row.accessedAt = CACHED_AT;
+              row.persist();
+              OciTag named = new OciTag();
+              named.repository = MIRROR_REPOSITORY;
+              named.imageName = MIRROR_IMAGE;
+              named.tag = tag;
+              named.manifestDigest = manifest;
+              named.updatedAt = CACHED_AT;
+              named.accessedAt = CACHED_AT;
+              named.persist();
+            });
+  }
+
+  private String stored(byte[] bytes) {
+    BlobStore.StagedBlob staged = blobStore.stage(new ByteArrayInputStream(bytes), Long.MAX_VALUE);
+    blobStore.promote(staged);
+    return staged.sha256();
+  }
+
+  private static byte[] filled(int length, byte value) {
+    byte[] bytes = new byte[length];
+    Arrays.fill(bytes, value);
+    return bytes;
+  }
+
+  private void sql(String statement) {
+    try (Connection connection = database.getConnection();
+        PreparedStatement prepared = connection.prepareStatement(statement)) {
+      prepared.executeUpdate();
+    } catch (SQLException e) {
+      throw new IllegalStateException(statement, e);
+    }
   }
 
   /**

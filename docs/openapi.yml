@@ -52,6 +52,34 @@ paths:
             \ dist}}, time}."
         "404":
           description: "Upstream has no such package, and so neither does the cache."
+  /mirror/api/gc/sweep:
+    post:
+      operationId: sweepGc
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+        required: false
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MirrorSweepReport"
+        "401":
+          description: Not Authorized
+        "403":
+          description: Not Allowed
+        "400":
+          description: Bad Request
+      summary: Sweep
+      tags:
+      - Gc Sweep Resource
+      security:
+      - SecurityScheme:
+        - qits:system
   /mirror/api/repositories:
     get:
       operationId: listRepositories
@@ -133,6 +161,33 @@ paths:
       - Upstreams Resource
 components:
   schemas:
+    Blobs:
+      type: object
+      properties:
+        reclaimable:
+          type: integer
+          format: int32
+        reclaimableBytes:
+          type: integer
+          format: int64
+        unlinked:
+          type: integer
+          format: int32
+        reclaimedBytes:
+          type: integer
+          format: int64
+        withheld:
+          type: integer
+          format: int32
+        withheldBytes:
+          type: integer
+          format: int64
+        stillReferenced:
+          type: integer
+          format: int32
+        alreadyGone:
+          type: integer
+          format: int32
     CachedPackageRow:
       type: object
       properties:
@@ -218,6 +273,23 @@ components:
           type: string
         createdAt:
           $ref: "#/components/schemas/Instant"
+    MirrorSweepReport:
+      type: object
+      properties:
+        startedAt:
+          $ref: "#/components/schemas/Instant"
+        dryRun:
+          type: boolean
+        pins:
+          $ref: "#/components/schemas/Pins"
+        types:
+          type: array
+          items:
+            $ref: "#/components/schemas/TypeLine"
+        blobs:
+          $ref: "#/components/schemas/Blobs"
+        summary:
+          type: string
     OciUpstreamRow:
       type: object
       properties:
@@ -230,6 +302,50 @@ components:
           format: int64
         createdAt:
           $ref: "#/components/schemas/Instant"
+    Pins:
+      type: object
+      properties:
+        supplied:
+          type: boolean
+        images:
+          type: integer
+          format: int32
+    TypeLine:
+      type: object
+      properties:
+        type:
+          type: string
+        window:
+          type: string
+        condemned:
+          type: integer
+          format: int32
+        superseded:
+          type: integer
+          format: int32
+        unpinned:
+          type: integer
+          format: int32
+        deleted:
+          type: integer
+          format: int32
+        kept:
+          type: integer
+          format: int32
+        pinned:
+          type: integer
+          format: int32
+        withheld:
+          type: integer
+          format: int32
+        errors:
+          type: array
+          items:
+            type: string
+        failure:
+          type: string
+        note:
+          type: string
   securitySchemes:
     SecurityScheme:
       type: openIdConnect

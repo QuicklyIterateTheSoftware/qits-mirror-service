@@ -59,9 +59,11 @@ import org.junit.jupiter.api.Test;
  *
  * <p>Nothing else varies between runs.
  *
- * <p><b>The recorder is an operator.</b> {@code evictCacheEntry} is {@code @RolesAllowed}, so the
- * class runs as {@code qits:admin}, the role the explorer's operator carries — as {@code
- * MirrorEvictionGuardTest} states it. The other doors are open, and answer the same to anyone.
+ * <p><b>The recorder is an operator and a machine.</b> {@code evictCacheEntry} is {@code
+ * @RolesAllowed}, so the class runs as {@code qits:admin}, the role the explorer's operator carries —
+ * as {@code MirrorEvictionGuardTest} states it — and {@code sweepGc} admits {@code qits:system}
+ * alone, the role qits-orchestrator calls it with. The other doors are open, and answer the same to
+ * anyone.
  *
  * <p>It <b>compares by default</b> and fails with a unified diff per differing file — including a
  * committed {@code .json} no interaction produces any more. {@code -Dgolden.update=true} (or {@code
@@ -70,7 +72,7 @@ import org.junit.jupiter.api.Test;
  */
 @QuarkusTest
 @TestProfile(ContractProfile.class)
-@TestSecurity(user = "operator", roles = "qits:admin")
+@TestSecurity(user = "operator", roles = {"qits:admin", "qits:system"})
 class GoldenMasterRecordingTest {
 
   static final int FORMAT_VERSION = 1;
@@ -95,25 +97,61 @@ class GoldenMasterRecordingTest {
       int status,
       boolean recordsAnswer,
       List<String> headers,
-      List<String> blanked) {
+      List<String> blanked,
+      JsonNode body) {
 
     /** A JSON answer, recorded whole. */
     Interaction(String state, String operationId, String method, String path, int status) {
-      this(state, operationId, method, path, status, true, List.of(), List.of());
+      this(state, operationId, method, path, status, true, List.of(), List.of(), null);
     }
 
     /** Not a JSON document: the status and these headers are the answer. */
     static Interaction statusOnly(
         String state, String operationId, String path, int status, String... headers) {
-      return new Interaction(state, operationId, "GET", path, status, false, List.of(headers), List.of());
+      return new Interaction(
+          state, operationId, "GET", path, status, false, List.of(headers), List.of(), null);
     }
 
     /** A JSON answer whose strings at {@code blanked} depend on the request and record as "". */
     Interaction blanking(String... paths) {
       return new Interaction(
-          state, operationId, method, path, status, recordsAnswer, headers, List.of(paths));
+          state, operationId, method, path, status, recordsAnswer, headers, List.of(paths), body);
+    }
+
+    /**
+     * The same interaction sending this JSON request body, recorded in the index as {@code
+     * contentType} and {@code body} the way qits-artifacts records its {@code sweepGc}.
+     */
+    Interaction sending(String json) {
+      try {
+        return new Interaction(
+            state,
+            operationId,
+            method,
+            path,
+            status,
+            recordsAnswer,
+            headers,
+            blanked,
+            // Not the class's JSON: this runs while INTERACTIONS is initialised, before it is.
+            new ObjectMapper().readTree(json));
+      } catch (IOException e) {
+        throw new IllegalArgumentException(json, e);
+      }
     }
   }
+
+  /**
+   * qits-orchestrator's sweep body (qits-2253): the image pins it read from qits-maintenance, as
+   * {@code GET /maintenance/api/pins/images} answers them, and a dry run, so the recording is a plan
+   * that leaves the state as it found it.
+   */
+  static final String SWEEP_BODY =
+      "{\"pins\":{\"images\":["
+          + "{\"name\":\"hub/library/postgres\",\"version\":\"18.4\"},"
+          + "{\"name\":\"node\",\"version\":\"24-alpine\"},"
+          + "{\"name\":\"quay/quarkus/ubi9-quarkus-mandrel-builder-image\",\"version\":\"jdk-25\"}"
+          + "]},\"dryRun\":true}";
 
   /** {@code GET /artifacts/maven/central/...}: the Central cache, where qits-maintenance reads it. */
   static final String MAVEN_METADATA =
@@ -167,7 +205,15 @@ class GoldenMasterRecordingTest {
                   ProviderStates.A_CACHED_NPM_PACKAGE, "getNpmPackument", "GET", NPM_PACKUMENT, 200)
               .blanking("$.versions[*].dist.tarball"),
           Interaction.statusOnly(
-              ProviderStates.NO_NPM_PACKAGE_UPSTREAM, "getNpmPackument", NPM_PACKUMENT, 404));
+              ProviderStates.NO_NPM_PACKAGE_UPSTREAM, "getNpmPackument", NPM_PACKUMENT, 404),
+          // The sweep door, as qits-orchestrator calls it with the pins it read (qits-2253).
+          new Interaction(
+                  ProviderStates.A_MIRROR_HOLDING_A_PINNED_AND_AN_UNPINNED_TAG,
+                  "sweepGc",
+                  "POST",
+                  "/mirror/api/gc/sweep",
+                  200)
+              .sending(SWEEP_BODY));
 
   private static final ObjectMapper JSON = new ObjectMapper();
 
@@ -221,6 +267,10 @@ class GoldenMasterRecordingTest {
       operation.put("operationId", interaction.operationId());
       operation.put("method", interaction.method());
       operation.put("path", interaction.path());
+      if (interaction.body() != null) {
+        operation.put("contentType", "application/json");
+        operation.set("body", interaction.body());
+      }
       operation.put("status", interaction.status());
       if (interaction.recordsAnswer()) {
         operation.put("file", file);
@@ -300,11 +350,19 @@ class GoldenMasterRecordingTest {
     for (Map.Entry<String, String> param : params.entrySet()) {
       path = path.replace("{" + param.getKey() + "}", param.getValue());
     }
-    HttpRequest request =
+    HttpRequest.Builder builder =
         HttpRequest.newBuilder(URI.create(base.toString()).resolve(path))
-            .method(interaction.method(), HttpRequest.BodyPublishers.noBody())
-            .header("Accept", "application/json")
-            .build();
+            .header("Accept", "application/json");
+    if (interaction.body() != null) {
+      builder
+          .header("Content-Type", "application/json")
+          .method(
+              interaction.method(),
+              HttpRequest.BodyPublishers.ofString(JSON.writeValueAsString(interaction.body())));
+    } else {
+      builder.method(interaction.method(), HttpRequest.BodyPublishers.noBody());
+    }
+    HttpRequest request = builder.build();
     HttpResponse<String> response;
     try (HttpClient client = HttpClient.newHttpClient()) {
       response = client.send(request, HttpResponse.BodyHandlers.ofString());

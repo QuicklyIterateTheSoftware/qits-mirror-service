@@ -35,6 +35,16 @@ public record EvictionPlan(
     return (int) dead.stream().filter(JudgedIdentity::regardlessOfWindow).count();
   }
 
+  /** How many of the kept were kept on their type's word — a pin — rather than on their access time. */
+  public int keptRegardlessOfWindow() {
+    return (int) kept.stream().filter(JudgedIdentity::regardlessOfWindow).count();
+  }
+
+  /** How many lines of {@code lines} carry the verdict label {@code label}, e.g. {@code unpinned}. */
+  public static int labelled(List<JudgedIdentity> lines, String label) {
+    return (int) lines.stream().filter(line -> label.equals(line.label())).count();
+  }
+
   /** A type with nothing to do — the honest answer for a cache whose every entry is warm. */
   public static EvictionPlan nothingDies(List<JudgedIdentity> kept, Set<String> live) {
     return new EvictionPlan(List.of(), kept, Set.of(), live);

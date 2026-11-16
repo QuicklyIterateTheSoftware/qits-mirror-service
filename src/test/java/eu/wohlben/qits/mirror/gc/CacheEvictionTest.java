@@ -2,6 +2,7 @@ package eu.wohlben.qits.mirror.gc;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.time.Duration;
@@ -105,6 +106,45 @@ class CacheEvictionTest {
     assertEquals(1, plan.condemnedRegardlessOfWindow());
     assertEquals(Set.of("old", "cold"), plan.blobsReleased());
     assertEquals(Set.of("new"), plan.blobsRetained());
+  }
+
+  @Test
+  void anIdentityItsTypeKeepsSurvivesTheWindowWithTheTypesOwnSentence() {
+    // qits-2253's half of the seam: a pinned tag nobody pulled in a year stays, and says why. Its
+    // blobs are retained, so the sweep subtracts them from anything a dying identity released.
+    FakeCacheEvictor evictor =
+        new FakeCacheEvictor()
+            .keep("hub/library/node:24-alpine", daysAgo(365), "pinned: a pin names it", "shared")
+            .condemn("hub/library/node:22-alpine", daysAgo(1), "unpinned: no pin names it", "shared", "own")
+            .add("hub/library/node:20", daysAgo(90), "cold");
+
+    EvictionPlan plan = engine.plan(evictor, WINDOW, NOW);
+
+    assertEquals(List.of("hub/library/node:24-alpine"), identities(plan.kept()));
+    JudgedIdentity pinned = plan.kept().get(0);
+    assertEquals("pinned: a pin names it", pinned.rule());
+    assertTrue(pinned.regardlessOfWindow());
+    assertEquals("pinned", pinned.label());
+    assertEquals(1, plan.keptRegardlessOfWindow());
+    assertEquals(
+        List.of("hub/library/node:20", "hub/library/node:22-alpine"), identities(plan.dead()));
+    assertEquals(1, EvictionPlan.labelled(plan.dead(), "unpinned"));
+    assertEquals(0, EvictionPlan.labelled(plan.dead(), "superseded"));
+    assertEquals(Set.of("shared"), plan.blobsRetained());
+    assertEquals(Set.of("shared", "own", "cold"), plan.blobsReleased());
+  }
+
+  @Test
+  void aVerdictSentenceMustLeadWithItsLabelAndATypeSaysOneVerdict() {
+    // The run counts lines by cause off the sentence's label; a sentence without one could not be
+    // counted, and an identity both condemned and kept is a type contradicting itself.
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> CachedIdentity.kept("r", "i", NOW, Set.of(), "kept because"));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> new CachedIdentity("r", "i", NOW, Set.of(), "unpinned: x", "pinned: y"));
+    assertEquals("superseded", CachedIdentity.labelOf("superseded: no tag reaches it"));
   }
 
   @Test

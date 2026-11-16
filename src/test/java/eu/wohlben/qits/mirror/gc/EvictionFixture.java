@@ -333,6 +333,39 @@ abstract class EvictionFixture {
     return new Rebound(manifest, newLayer);
   }
 
+  /**
+   * One single-arch image cached under any namespace: a config, a layer, the manifest over them and
+   * one tag naming it, all young rows over bytes already past the grace window. Each call with a
+   * distinct {@code fill} stores distinct bytes.
+   *
+   * @return the manifest's digest
+   */
+  String seedImage(String repository, String image, String tag, byte fill) {
+    repositoryService.ensure(repository, OciMirrorProfile.KEY);
+    String config = store(filled(MIRROR_CONFIG, fill));
+    String layer = store(filled(MIRROR_LAYER + fill, fill));
+    byte[] bytes = imageManifest(config, Map.of(layer, (long) (MIRROR_LAYER + fill)), MIRROR_CONFIG);
+    String manifest = store(bytes);
+    for (String blobId : List.of(config, layer, manifest)) {
+      backdate(blobId, Duration.ofDays(30));
+    }
+    Instant now = Instant.now();
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              OciManifest row = mirrorManifest(manifest, bytes.length, OciMediaTypes.OCI_MANIFEST_V1);
+              row.repository = repository;
+              row.imageName = image;
+              ociManifests.persist(row);
+              OciTag named = mirrorTag(tag, manifest);
+              named.repository = repository;
+              named.imageName = image;
+              named.updatedAt = now;
+              ociTags.persist(named);
+            });
+    return manifest;
+  }
+
   /** Persists one more mirror manifest row over bytes the case already stored. */
   void mirrorManifestRow(String digest, byte[] bytes, String mediaType) {
     QuarkusTransaction.requiringNew()

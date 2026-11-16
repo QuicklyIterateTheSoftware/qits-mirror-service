@@ -84,6 +84,49 @@
       ]
     },
     {
+      "name": "a mirror holding a pinned and an unpinned tag",
+      "slug": "a-mirror-holding-a-pinned-and-an-unpinned-tag",
+      "params": {},
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "sweepGc",
+          "method": "POST",
+          "path": "/mirror/api/gc/sweep",
+          "contentType": "application/json",
+          "body": {
+            "pins": {
+              "images": [
+                {
+                  "name": "hub/library/postgres",
+                  "version": "18.4"
+                },
+                {
+                  "name": "node",
+                  "version": "24-alpine"
+                },
+                {
+                  "name": "quay/quarkus/ubi9-quarkus-mandrel-builder-image",
+                  "version": "jdk-25"
+                }
+              ]
+            },
+            "dryRun": true
+          },
+          "status": 200,
+          "file": "a-mirror-holding-a-pinned-and-an-unpinned-tag/sweepGc.json",
+          "frozen": {
+            "ids": [],
+            "instants": [
+              "$.startedAt"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
       "name": "an npm cache holding a package",
       "slug": "an-npm-cache-holding-a-package",
       "params": {

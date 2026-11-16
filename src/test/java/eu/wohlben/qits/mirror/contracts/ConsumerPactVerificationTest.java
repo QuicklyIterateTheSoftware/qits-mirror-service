@@ -14,6 +14,7 @@ import au.com.dius.pact.provider.junitsupport.loader.PactSource;
 import io.quarkus.test.common.http.TestHTTPResource;
 import io.quarkus.test.junit.QuarkusTest;
 import io.quarkus.test.junit.TestProfile;
+import io.quarkus.test.security.TestSecurity;
 import jakarta.inject.Inject;
 import java.net.URL;
 import java.util.List;
@@ -40,13 +41,16 @@ import org.junit.jupiter.api.extension.ExtendWith;
  * state its pact names that {@link ProviderStates} does not answer is added there with its golden
  * master.
  *
- * <p>Each interaction runs against this {@code @QuarkusTest} application over real HTTP,
- * unauthenticated: the listings are open. Every {@code @State} method delegates to {@link
+ * <p>Each interaction runs against this {@code @QuarkusTest} application over real HTTP, as {@code
+ * qits:system}: the listings and the caches are open and answer anyone the same, and the sweep door
+ * qits-orchestrator calls (qits-2253) admits that role alone — the one the orchestrator's token
+ * carries. Every {@code @State} method delegates to {@link
  * ProviderStates}; {@link #target} fails an unknown state, and an interaction without {@code
  * comments.references.qits-call} or {@code qits-trigger}.
  */
 @QuarkusTest
 @TestProfile(ContractProfile.class)
+@TestSecurity(user = "qits-orchestrator", roles = "qits:system")
 @Provider(ConsumerPactVerificationTest.PROVIDER)
 @PactSource(ClasspathPactLoader.class)
 class ConsumerPactVerificationTest {
@@ -136,5 +140,10 @@ class ConsumerPactVerificationTest {
   @State(ProviderStates.NO_NPM_PACKAGE_UPSTREAM)
   Map<String, String> noNpmPackageUpstream() {
     return states.params(ProviderStates.NO_NPM_PACKAGE_UPSTREAM);
+  }
+
+  @State(ProviderStates.A_MIRROR_HOLDING_A_PINNED_AND_AN_UNPINNED_TAG)
+  Map<String, String> aMirrorHoldingAPinnedAndAnUnpinnedTag() {
+    return states.params(ProviderStates.A_MIRROR_HOLDING_A_PINNED_AND_AN_UNPINNED_TAG);
   }
 }

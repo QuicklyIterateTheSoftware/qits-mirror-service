@@ -2,7 +2,6 @@ package eu.wohlben.qits.mirror.gc;
 
 import eu.wohlben.qits.blobstore.control.BlobCompaction;
 import eu.wohlben.qits.blobstore.control.BlobReclaim;
-import io.quarkus.scheduler.Scheduled;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.context.control.ActivateRequestContext;
 import jakarta.enterprise.inject.Instance;
@@ -13,16 +12,26 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.jboss.logging.Logger;
 
 /**
  * The run: plan every cache type, delete what each condemned, reclaim the blobs nothing reaches any
- * more. One schedule, one log line.
+ * more. One call, one log line, one report.
  *
- * <p><b>Nothing triggers this but the clock.</b> There is no route and no admin call — the whole
- * policy is "a cached entry unused for longer than its window is evicted", which is a decision the
- * configuration makes rather than one an operator takes per run. The admin surface is a separate
- * work package; when it lands, {@link #run()} is what it calls.
+ * <p><b>qits-orchestrator is the only clock</b> (qits-2253). There is no schedule here any more: the
+ * orchestrator calls {@code POST /mirror/api/gc/sweep} on its own cadence, with the image pins it
+ * read from qits-maintenance in the body, and {@link #run(ImagePins, boolean)} — the single entry
+ * point — is what that door calls. The pins are why the trigger moved: a sweep that judges mirrored
+ * tags by what is pinned needs the pins, and the mirror must not fail closed on another service's
+ * availability by fetching them itself. A run handed {@link ImagePins#ABSENT} — the orchestrator's
+ * pin read failed — is the window-only run this used to be.
+ *
+ * <p><b>One run at a time.</b> A second call while one is running is refused at once with {@link
+ * SweepInProgress} (the door answers 409) rather than queued: two runs planning against a store the
+ * other is deleting from would judge identities against rows that are going, and a caller that
+ * waited would hold a request open for as long as a sweep of the whole cache takes. The orchestrator
+ * retries on its next tick.
  *
  * <p><b>The order inside one run is the safety property.</b> Every type is planned against <b>one</b>
  * census and one clock, then every type deletes its own rows, then the blob sweep reconciles across
@@ -52,6 +61,12 @@ public class CacheEvictionSweep {
 
   private static final Logger LOG = Logger.getLogger(CacheEvictionSweep.class);
 
+  /** The verdict labels a run counts by cause ({@link JudgedIdentity#label()}). */
+  static final String SUPERSEDED = "superseded";
+
+  static final String UNPINNED = "unpinned";
+  static final String PINNED = "pinned";
+
   @Inject Instance<CacheEvictor> evictors;
   @Inject EvictionConfig config;
   @Inject MirrorBlobCensus census;
@@ -66,7 +81,11 @@ public class CacheEvictionSweep {
    *
    * @param startedAt the run's one clock — every type was judged against this instant
    * @param dryRun whether anything was deleted at all
-   * @param types one line per registered evictor, in the order CDI found them
+   * @param pinsSupplied whether the run was handed image pins, so mirrored tags were judged by them
+   *     rather than by the window
+   * @param imagePins how many image pins the caller supplied; zero when it supplied none
+   * @param types one line per registered evictor, sorted by type key — CDI's own order varies
+   *     between starts, and a log line or receipt whose order moved would read as a change
    * @param blobPlan what the reconciliation freed, or would free on a dry run
    * @param blobs the unlink loop's own counts; all zero on a dry run
    * @param disk what the post-sweep compaction measured (qits-2248), or null on a dry run or when
@@ -75,13 +94,18 @@ public class CacheEvictionSweep {
   public record SweepReport(
       Instant startedAt,
       boolean dryRun,
+      boolean pinsSupplied,
+      int imagePins,
       List<TypeResult> types,
       MirrorBlobSweep.SweepPlan blobPlan,
       MirrorBlobSweep.SweepOutcome blobs,
       BlobCompaction.CompactionResult disk) {
 
     public SweepReport {
-      types = List.copyOf(types);
+      types =
+          types.stream()
+              .sorted(java.util.Comparator.comparing(TypeResult::typeKey))
+              .toList();
     }
 
     /** One type's line, by key. */
@@ -101,7 +125,11 @@ public class CacheEvictionSweep {
    * @param condemned identities the plan condemned
    * @param superseded how many of those its type condemned regardless of the window, because
    *     nothing can reach them any more; a subset of {@code condemned}, never added to it
+   * @param unpinned how many of those its type condemned because no image pin names them
+   *     (qits-2253); a subset of {@code condemned} too, and disjoint from {@code superseded}
    * @param kept identities it kept
+   * @param pinned how many of those it kept because an image pin names them; a subset of {@code
+   *     kept}
    * @param deleted rows actually gone — zero on a dry run
    * @param withheldByGraceWindow identities left whole because a blob they release is still young
    * @param errors what could not be applied, each with its reason
@@ -113,7 +141,9 @@ public class CacheEvictionSweep {
       Duration window,
       int condemned,
       int superseded,
+      int unpinned,
       int kept,
+      int pinned,
       int deleted,
       int withheldByGraceWindow,
       List<String> errors,
@@ -125,38 +155,52 @@ public class CacheEvictionSweep {
     }
   }
 
+  /** Refused because another run is still in flight; the door answers 409. */
+  public static final class SweepInProgress extends RuntimeException {
+    SweepInProgress() {
+      super("a mirror sweep is already running; retry once it has finished");
+    }
+  }
+
+  /** Whether a run is in flight — the one-at-a-time guard, held across the whole of {@link #run}. */
+  private final AtomicBoolean running = new AtomicBoolean();
+
   /**
-   * The schedule. Off-hours and a cron rather than an interval: a run walks every cached row and
-   * every manifest document, which is work worth doing when nothing is pulling.
-   *
-   * <p>{@code SKIP} on a concurrent execution, so a run that outlives its own schedule is never
-   * joined by a second one planning against a store the first is deleting from.
+   * The guard itself, for a case that has to hold it while it knocks. A method rather than the
+   * field, because a test holds the client proxy and a field read on that would be the proxy's own.
    */
-  @Scheduled(
-      cron = "{qits.mirror.eviction.cron}",
-      concurrentExecution = Scheduled.ConcurrentExecution.SKIP)
-  void onSchedule() {
-    if (!config.enabled()) {
-      LOG.info("Cache eviction is disabled (qits.mirror.eviction.enabled=false); nothing swept.");
-      return;
-    }
-    try {
-      LOG.info(summary(run()));
-    } catch (RuntimeException failed) {
-      // A sweep is a background chore: a failure is a line in the log and a retry on the next
-      // schedule, never a dead scheduler thread or a service that stops serving pulls.
-      LOG.error("Cache eviction run failed; the next schedule retries.", failed);
-    }
+  AtomicBoolean inFlight() {
+    return running;
   }
 
   /**
    * Plans every type against one census and one clock, applies what is not a dry run, and reclaims.
+   * Logs the one line and answers the report it summarises.
    *
-   * <p>{@code @ActivateRequestContext} because the persistence session is bound to it: a scheduled
-   * method has no request of its own.
+   * <p>{@code @ActivateRequestContext} because the persistence session is bound to it, and a caller
+   * off a request thread — a test, a future job — has no request of its own.
+   *
+   * @param pins the image pins mirrored tags are judged by, or {@link ImagePins#ABSENT} to judge them
+   *     by the window
+   * @param dryRunRequested plan and report only; {@code qits.mirror.eviction.dry-run} forces this on
+   *     whatever the caller says
+   * @throws SweepInProgress another run has not finished
    */
   @ActivateRequestContext
-  public SweepReport run() {
+  public SweepReport run(ImagePins pins, boolean dryRunRequested) {
+    if (!running.compareAndSet(false, true)) {
+      throw new SweepInProgress();
+    }
+    try {
+      SweepReport report = sweepOnce(pins, dryRunRequested || config.dryRun());
+      LOG.info(summary(report));
+      return report;
+    } finally {
+      running.set(false);
+    }
+  }
+
+  private SweepReport sweepOnce(ImagePins pins, boolean dryRun) {
     Instant startedAt = Instant.now();
     MirrorBlobCensus.Census taken = census.take();
 
@@ -165,15 +209,17 @@ public class CacheEvictionSweep {
     for (CacheEvictor evictor : evictors) {
       try {
         Duration window = config.requireWindow(evictor.typeKey());
-        EvictionPlan plan = engine.plan(evictor, window, startedAt);
+        EvictionPlan plan = engine.plan(evictor, window, startedAt, pins);
         plans.put(evictor.typeKey(), plan);
         results.add(
             new TypeResult(
                 evictor.typeKey(),
                 window,
                 plan.dead().size(),
-                plan.condemnedRegardlessOfWindow(),
+                EvictionPlan.labelled(plan.dead(), SUPERSEDED),
+                EvictionPlan.labelled(plan.dead(), UNPINNED),
                 plan.kept().size(),
+                EvictionPlan.labelled(plan.kept(), PINNED),
                 0,
                 0,
                 List.of(),
@@ -189,16 +235,20 @@ public class CacheEvictionSweep {
                 0,
                 0,
                 0,
+                0,
+                0,
                 List.of(),
                 message(failed),
                 evictor.note()));
       }
     }
 
-    if (config.dryRun()) {
+    if (dryRun) {
       return new SweepReport(
           startedAt,
           true,
+          pins.present(),
+          pins.count(),
           results,
           sweep.plan(taken, plans),
           MirrorBlobSweep.SweepOutcome.nothing(),
@@ -224,7 +274,14 @@ public class CacheEvictionSweep {
 
     MirrorBlobSweep.SweepOutcome outcome = sweep.execute(taken, plans);
     return new SweepReport(
-        startedAt, false, results, sweep.plan(taken, plans), outcome, compact());
+        startedAt,
+        false,
+        pins.present(),
+        pins.count(),
+        results,
+        sweep.plan(taken, plans),
+        outcome,
+        compact());
   }
 
   /**
@@ -276,7 +333,7 @@ public class CacheEvictionSweep {
   }
 
   /** The one log line a run leaves behind. */
-  static String summary(SweepReport report) {
+  public static String summary(SweepReport report) {
     StringBuilder line = new StringBuilder(report.dryRun() ? "Cache eviction (dry run):" : "Cache eviction:");
     for (TypeResult type : report.types()) {
       line.append(' ').append(type.typeKey()).append('=');
@@ -285,14 +342,24 @@ public class CacheEvictionSweep {
         continue;
       }
       line.append(type.condemned()).append(" condemned");
+      List<String> causes = new ArrayList<>();
       if (type.superseded() > 0) {
-        line.append(" (").append(type.superseded()).append(" superseded)");
+        causes.add(type.superseded() + " " + SUPERSEDED);
+      }
+      if (type.unpinned() > 0) {
+        causes.add(type.unpinned() + " " + UNPINNED);
+      }
+      if (!causes.isEmpty()) {
+        line.append(" (").append(String.join(", ", causes)).append(')');
       }
       line.append('/')
           .append(type.deleted())
           .append(" deleted/")
           .append(type.kept())
           .append(" kept");
+      if (type.pinned() > 0) {
+        line.append(" (").append(type.pinned()).append(' ').append(PINNED).append(')');
+      }
       if (type.withheldByGraceWindow() > 0) {
         line.append('/').append(type.withheldByGraceWindow()).append(" withheld");
       }
@@ -351,7 +418,9 @@ public class CacheEvictionSweep {
                 result.window(),
                 result.condemned(),
                 result.superseded(),
+                result.unpinned(),
                 result.kept(),
+                result.pinned(),
                 applied.deleted().size(),
                 applied.withheldByGraceWindow().size(),
                 applied.errors(),
@@ -369,7 +438,9 @@ public class CacheEvictionSweep {
                 result.window(),
                 result.condemned(),
                 result.superseded(),
+                result.unpinned(),
                 result.kept(),
+                result.pinned(),
                 result.deleted(),
                 result.withheldByGraceWindow(),
                 result.errors(),

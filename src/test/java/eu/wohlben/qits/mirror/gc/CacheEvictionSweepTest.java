@@ -39,7 +39,7 @@ class CacheEvictionSweepTest extends EvictionFixture {
     MirrorStore mirror = seedMirror();
     ageMirrorRows(Duration.ofDays(60));
 
-    CacheEvictionSweep.SweepReport report = sweep.run();
+    CacheEvictionSweep.SweepReport report = sweep.run(ImagePins.ABSENT, false);
 
     assertFalse(report.dryRun());
     // npm: the cold version and its cold document; the warm package keeps both of its rows.
@@ -83,7 +83,7 @@ class CacheEvictionSweepTest extends EvictionFixture {
         longAgo,
         Instant.now().minus(Duration.ofDays(1)));
 
-    CacheEvictionSweep.SweepReport report = sweep.run();
+    CacheEvictionSweep.SweepReport report = sweep.run(ImagePins.ABSENT, false);
 
     assertEquals(1, report.type(NpmProxyProfile.KEY).deleted(), "the cold npm row is gone");
     assertEquals(0, report.blobs().unlinked(), "and its bytes are not, because maven still has them");
@@ -109,7 +109,7 @@ class CacheEvictionSweepTest extends EvictionFixture {
   void theRunLeavesOneLineNamingWhatEachTypeDid() throws Exception {
     seedNpmCache();
 
-    String line = CacheEvictionSweep.summary(sweep.run());
+    String line = CacheEvictionSweep.summary(sweep.run(ImagePins.ABSENT, false));
 
     assertTrue(line.startsWith("Cache eviction:"), line);
     assertTrue(line.contains(NpmProxyProfile.KEY + "=2 condemned/2 deleted/2 kept"), line);
@@ -123,7 +123,7 @@ class CacheEvictionSweepTest extends EvictionFixture {
     // because of upstream drift rather than because nobody pulled.
     rebindMirrorTag(seedMirror());
 
-    String line = CacheEvictionSweep.summary(sweep.run());
+    String line = CacheEvictionSweep.summary(sweep.run(ImagePins.ABSENT, false));
 
     assertTrue(
         line.contains(OciMirrorProfile.KEY + "=2 condemned (2 superseded)/2 deleted/1 kept"), line);
@@ -157,7 +157,7 @@ class CacheEvictionSweepTest extends EvictionFixture {
     npmVersionRow("newest-pkg", "1.0.0", newest, yesterday, yesterday);
     assertEquals(1, partitionCount(closed), "the case only says anything if the segment exists");
 
-    CacheEvictionSweep.SweepReport report = sweep.run();
+    CacheEvictionSweep.SweepReport report = sweep.run(ImagePins.ABSENT, false);
 
     assertFalse(blobStore.exists(doomed), "the cold tarball lost its last row");
     assertEquals(1, report.blobs().unlinked());

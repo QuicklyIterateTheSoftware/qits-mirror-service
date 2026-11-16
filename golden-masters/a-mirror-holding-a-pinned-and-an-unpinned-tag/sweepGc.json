@@ -1,0 +1,63 @@
+{
+  "startedAt": "2026-01-01T00:00:00Z",
+  "dryRun": true,
+  "pins": {
+    "supplied": true,
+    "images": 3
+  },
+  "types": [
+    {
+      "type": "maven-proxy",
+      "window": "P90D",
+      "condemned": 0,
+      "superseded": 0,
+      "unpinned": 0,
+      "deleted": 0,
+      "kept": 0,
+      "pinned": 0,
+      "withheld": 0,
+      "errors": [],
+      "failure": null,
+      "note": "cached maven-metadata.xml documents are text columns, not files: 0 characters are cached as this report was produced. Evicting one frees its row for reuse and reclaims 0 bytes on disk — PostgreSQL returns the space to the table rather than to the filesystem, which only a VACUUM FULL does and nothing here runs one. The reclaimed bytes on this line count cached files and nothing else."
+    },
+    {
+      "type": "npm-proxy",
+      "window": "P30D",
+      "condemned": 0,
+      "superseded": 0,
+      "unpinned": 0,
+      "deleted": 0,
+      "kept": 0,
+      "pinned": 0,
+      "withheld": 0,
+      "errors": [],
+      "failure": null,
+      "note": "cached packuments are text columns, not files: 0 characters are cached as this report was produced. Evicting one frees its row for reuse and reclaims 0 bytes on disk — PostgreSQL returns the space to the table rather than to the filesystem, which only a VACUUM FULL does and nothing here runs one. The reclaimed bytes on this line count tarball blobs and nothing else."
+    },
+    {
+      "type": "oci-mirror",
+      "window": "P30D",
+      "condemned": 1,
+      "superseded": 0,
+      "unpinned": 1,
+      "deleted": 0,
+      "kept": 1,
+      "pinned": 1,
+      "withheld": 0,
+      "errors": [],
+      "failure": null,
+      "note": null
+    }
+  ],
+  "blobs": {
+    "reclaimable": 3,
+    "reclaimableBytes": 522,
+    "unlinked": 0,
+    "reclaimedBytes": 0,
+    "withheld": 0,
+    "withheldBytes": 0,
+    "stillReferenced": 0,
+    "alreadyGone": 0
+  },
+  "summary": "Cache eviction (dry run): MAVEN_PROXY=0 condemned/0 deleted/0 kept NPM_PROXY=0 condemned/0 deleted/0 kept OCI_MIRROR=1 condemned (1 unpinned)/0 deleted/1 kept (1 pinned) blobs=3 reclaimable (522 bytes)"
+}
