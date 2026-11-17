@@ -179,6 +179,7 @@ public class ProviderStates {
     seeder.ensureDefaults();
     clearNpmCache();
     clearMavenCache();
+    clearOciCache();
     return new Setup(Map.of());
   }
 
@@ -190,6 +191,7 @@ public class ProviderStates {
     seeder.ensureDefaults();
     clearNpmCache();
     clearMavenCache();
+    clearOciCache();
     byte[] tarball = new byte[NPM_TARBALL_BYTES];
     Arrays.fill(tarball, (byte) 11);
     BlobStore.StagedBlob staged =
@@ -228,6 +230,7 @@ public class ProviderStates {
     seeder.ensureDefaults();
     clearNpmCache();
     clearMavenCache();
+    clearOciCache();
     ContractMavenUpstream.pointAtTheStub(mavenUpstream);
     ContractMavenUpstream.hostMetadata(MAVEN_GROUP, MAVEN_ARTIFACT, MAVEN_VERSIONS);
     inRequestContext(
@@ -249,6 +252,7 @@ public class ProviderStates {
     seeder.ensureDefaults();
     clearNpmCache();
     clearMavenCache();
+    clearOciCache();
     ContractMavenUpstream.pointAtTheStub(mavenUpstream);
     ContractMavenUpstream.hostMetadata(MAVEN_GROUP, MAVEN_EVICTED_ARTIFACT, "1.0.0");
     String path = mavenMetadataPath(MAVEN_EVICTED_ARTIFACT);
@@ -264,6 +268,7 @@ public class ProviderStates {
     seeder.ensureDefaults();
     clearNpmCache();
     clearMavenCache();
+    clearOciCache();
     ContractMavenUpstream.pointAtTheStub(mavenUpstream);
     return mavenParams(MAVEN_ABSENT_ARTIFACT);
   }
@@ -276,6 +281,7 @@ public class ProviderStates {
     seeder.ensureDefaults();
     clearNpmCache();
     clearMavenCache();
+    clearOciCache();
     ContractNpmUpstream.pointAtTheStub(npmUpstream);
     ContractNpmUpstream.hostVersions(NPM_CACHED_PACKAGE, NPM_VERSIONS);
     inRequestContext(
@@ -290,6 +296,7 @@ public class ProviderStates {
     seeder.ensureDefaults();
     clearNpmCache();
     clearMavenCache();
+    clearOciCache();
     ContractNpmUpstream.pointAtTheStub(npmUpstream);
     return npmParams(NPM_ABSENT_PACKAGE);
   }
@@ -303,6 +310,7 @@ public class ProviderStates {
     seeder.ensureDefaults();
     clearNpmCache();
     clearMavenCache();
+    clearOciCache();
     for (String table :
         new String[] {
           "oci_mirror_tag_check",
@@ -448,6 +456,18 @@ public class ProviderStates {
    */
   private void clearNpmCache() {
     delete(MirrorRepositorySeeder.NPM_CACHE, "npm_dist_tag", "npm_version", "npm_proxy_packument");
+  }
+
+  /**
+   * Empties every OCI namespace's tags and manifests, so a state that lists images ({@code
+   * listUpstreams}' {@code cachedImages}) never counts what an earlier state cached — the sweep
+   * state's kept {@code node} tag leaked into {@code the default caches} whenever it ran first
+   * (qits-2253). Blobs stay: no state that lists counts them.
+   */
+  private void clearOciCache() {
+    for (String table : new String[] {"oci_mirror_tag_check", "oci_tag", "oci_manifest"}) {
+      sql("delete from " + table);
+    }
   }
 
   /** Empties the maven cache's cached upstream metadata, so a state owns what it serves. */
