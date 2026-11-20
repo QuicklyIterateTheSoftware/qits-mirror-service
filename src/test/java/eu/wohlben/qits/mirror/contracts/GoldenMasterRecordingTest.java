@@ -179,6 +179,13 @@ class GoldenMasterRecordingTest {
               "GET",
               "/mirror/api/upstreams",
               200),
+          // The explorer's empty state (qits-2357): no registry mirrored at all.
+          new Interaction(
+              ProviderStates.A_MIRROR_FRONTING_NO_REGISTRIES,
+              "listUpstreams",
+              "GET",
+              "/mirror/api/upstreams",
+              200),
           new Interaction(
               ProviderStates.AN_NPM_CACHE_HOLDING_A_PACKAGE,
               "listRepositoryPackages",

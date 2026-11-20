@@ -1,6 +1,8 @@
 package eu.wohlben.qits.mirror.contracts;
 
 import eu.wohlben.qits.artifacts.control.NpmPackageName;
+import eu.wohlben.qits.artifacts.control.OciMirrorUpstreams;
+import eu.wohlben.qits.artifacts.dto.MirrorUpstreamSummary;
 import eu.wohlben.qits.artifacts.entity.NpmDistTag;
 import eu.wohlben.qits.artifacts.entity.NpmVersion;
 import eu.wohlben.qits.artifacts.entity.OciManifest;
@@ -61,6 +63,12 @@ public class ProviderStates {
 
   /** The five cache roots this service registers, and nothing cached in them. */
   public static final String THE_DEFAULT_CACHES = "the default caches";
+
+  /**
+   * The default caches with every OCI upstream removed: {@code listUpstreams} answers an empty list,
+   * the answer a consumer gets from a mirror that fronts no registry at all (qits-2357).
+   */
+  public static final String A_MIRROR_FRONTING_NO_REGISTRIES = "a mirror fronting no registries";
 
   /** The npm cache holding one package version with one dist tag. */
   public static final String AN_NPM_CACHE_HOLDING_A_PACKAGE = "an npm cache holding a package";
@@ -125,6 +133,7 @@ public class ProviderStates {
   @Inject BlobStore blobStore;
   @Inject MavenUpstream mavenUpstream;
   @Inject NpmUpstream npmUpstream;
+  @Inject OciMirrorUpstreams mirrorUpstreams;
 
   @Inject
   @DataSource("mirror")
@@ -134,6 +143,7 @@ public class ProviderStates {
 
   public ProviderStates() {
     states.put(THE_DEFAULT_CACHES, this::theDefaultCaches);
+    states.put(A_MIRROR_FRONTING_NO_REGISTRIES, this::aMirrorFrontingNoRegistries);
     states.put(AN_NPM_CACHE_HOLDING_A_PACKAGE, this::anNpmCacheHoldingAPackage);
     states.put(A_CACHED_MAVEN_ARTIFACT, this::aCachedMavenArtifact);
     states.put(A_CACHED_NPM_PACKAGE, this::aCachedNpmPackage);
@@ -180,6 +190,23 @@ public class ProviderStates {
     clearNpmCache();
     clearMavenCache();
     clearOciCache();
+    return new Setup(Map.of());
+  }
+
+  /**
+   * The default caches, then every {@code oci_mirror_upstream} row deleted through {@link
+   * OciMirrorUpstreams#delete}, so no namespace fronts a registry. The paired repository rows stay,
+   * as a delete leaves them; the next state's {@code ensureDefaults()} re-creates the three upstream
+   * rows against them, so this state strands nothing for the others.
+   */
+  private Setup aMirrorFrontingNoRegistries() {
+    seeder.ensureDefaults();
+    clearNpmCache();
+    clearMavenCache();
+    clearOciCache();
+    for (MirrorUpstreamSummary upstream : mirrorUpstreams.list()) {
+      mirrorUpstreams.delete(upstream.domain());
+    }
     return new Setup(Map.of());
   }
 

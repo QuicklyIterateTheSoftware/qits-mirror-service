@@ -84,6 +84,27 @@
       ]
     },
     {
+      "name": "a mirror fronting no registries",
+      "slug": "a-mirror-fronting-no-registries",
+      "params": {},
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "listUpstreams",
+          "method": "GET",
+          "path": "/mirror/api/upstreams",
+          "status": 200,
+          "file": "a-mirror-fronting-no-registries/listUpstreams.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
       "name": "a mirror holding a pinned and an unpinned tag",
       "slug": "a-mirror-holding-a-pinned-and-an-unpinned-tag",
       "params": {},

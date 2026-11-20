@@ -112,6 +112,11 @@ class ConsumerPactVerificationTest {
     return states.params(ProviderStates.THE_DEFAULT_CACHES);
   }
 
+  @State(ProviderStates.A_MIRROR_FRONTING_NO_REGISTRIES)
+  Map<String, String> aMirrorFrontingNoRegistries() {
+    return states.params(ProviderStates.A_MIRROR_FRONTING_NO_REGISTRIES);
+  }
+
   @State(ProviderStates.AN_NPM_CACHE_HOLDING_A_PACKAGE)
   Map<String, String> anNpmCacheHoldingAPackage() {
     return states.params(ProviderStates.AN_NPM_CACHE_HOLDING_A_PACKAGE);
