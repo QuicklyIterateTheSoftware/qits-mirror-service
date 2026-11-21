@@ -196,6 +196,27 @@
       ]
     },
     {
+      "name": "a mirror holding no cache roots",
+      "slug": "a-mirror-holding-no-cache-roots",
+      "params": {},
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "listRepositories",
+          "method": "GET",
+          "path": "/mirror/api/repositories",
+          "status": 200,
+          "file": "a-mirror-holding-no-cache-roots/listRepositories.json",
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
       "name": "an npm cache holding a package",
       "slug": "an-npm-cache-holding-a-package",
       "params": {

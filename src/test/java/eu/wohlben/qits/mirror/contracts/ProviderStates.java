@@ -89,6 +89,13 @@ public class ProviderStates {
    */
   public static final String A_MIRROR_FRONTING_NO_REGISTRIES = "a mirror fronting no registries";
 
+  /**
+   * A mirror with no cache root at all: {@code listRepositories} answers an empty list (qits-2471).
+   * A running service re-seeds its two package caches at boot, so this is the answer only a
+   * consumer that reads a mirror mid-reset gets; the landing app still draws it.
+   */
+  public static final String A_MIRROR_HOLDING_NO_CACHE_ROOTS = "a mirror holding no cache roots";
+
   /** The npm cache holding one package version with one dist tag. */
   public static final String AN_NPM_CACHE_HOLDING_A_PACKAGE = "an npm cache holding a package";
 
@@ -169,6 +176,7 @@ public class ProviderStates {
     states.put(NO_CACHE_ROOT_OF_THAT_NAME, this::noCacheRootOfThatName);
     states.put(A_MAVEN_CACHE_HOLDING_A_CACHED_ARTIFACT, this::aMavenCacheHoldingACachedArtifact);
     states.put(A_MIRROR_FRONTING_NO_REGISTRIES, this::aMirrorFrontingNoRegistries);
+    states.put(A_MIRROR_HOLDING_NO_CACHE_ROOTS, this::aMirrorHoldingNoCacheRoots);
     states.put(AN_NPM_CACHE_HOLDING_A_PACKAGE, this::anNpmCacheHoldingAPackage);
     states.put(A_CACHED_MAVEN_ARTIFACT, this::aCachedMavenArtifact);
     states.put(A_CACHED_NPM_PACKAGE, this::aCachedNpmPackage);
@@ -276,6 +284,33 @@ public class ProviderStates {
     clearOciCache();
     for (MirrorUpstreamSummary upstream : mirrorUpstreams.list()) {
       mirrorUpstreams.delete(upstream.domain());
+    }
+    return new Setup(Map.of());
+  }
+
+  /**
+   * No cache root: every cached row, every OCI upstream and every root row deleted. Each other
+   * state starts with {@code ensureDefaults()}, which registers the five roots again.
+   */
+  private Setup aMirrorHoldingNoCacheRoots() {
+    aMirrorFrontingNoRegistries();
+    for (String table :
+        new String[] {
+          "artifact_metadata",
+          "artifact_record",
+          "npm_dist_tag",
+          "npm_version",
+          "npm_proxy_packument",
+          "npm_version_tombstone",
+          "maven_artifact",
+          "maven_proxy_metadata",
+          "oci_mirror_tag_check",
+          "oci_tag",
+          "oci_manifest",
+          "oci_mirror_upstream",
+          "artifact_repository"
+        }) {
+      sql("delete from " + table);
     }
     return new Setup(Map.of());
   }

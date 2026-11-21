@@ -176,6 +176,13 @@ class GoldenMasterRecordingTest {
               "GET",
               "/mirror/api/repositories",
               200),
+          // The cache roots' empty state (qits-2471): no root at all.
+          new Interaction(
+              ProviderStates.A_MIRROR_HOLDING_NO_CACHE_ROOTS,
+              "listRepositories",
+              "GET",
+              "/mirror/api/repositories",
+              200),
           new Interaction(
               ProviderStates.THE_DEFAULT_CACHES,
               "listUpstreams",

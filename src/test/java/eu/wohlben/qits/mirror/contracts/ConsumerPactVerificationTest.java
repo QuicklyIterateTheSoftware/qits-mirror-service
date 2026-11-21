@@ -127,6 +127,11 @@ class ConsumerPactVerificationTest {
     return states.params(ProviderStates.A_MIRROR_FRONTING_NO_REGISTRIES);
   }
 
+  @State(ProviderStates.A_MIRROR_HOLDING_NO_CACHE_ROOTS)
+  Map<String, String> aMirrorHoldingNoCacheRoots() {
+    return states.params(ProviderStates.A_MIRROR_HOLDING_NO_CACHE_ROOTS);
+  }
+
   @State(ProviderStates.AN_NPM_CACHE_HOLDING_A_PACKAGE)
   Map<String, String> anNpmCacheHoldingAPackage() {
     return states.params(ProviderStates.AN_NPM_CACHE_HOLDING_A_PACKAGE);
