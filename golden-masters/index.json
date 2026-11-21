@@ -57,6 +57,34 @@
       ]
     },
     {
+      "name": "a maven cache holding a cached artifact",
+      "slug": "a-maven-cache-holding-a-cached-artifact",
+      "params": {
+        "repository": "central"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "listRepositoryPackages",
+          "method": "GET",
+          "path": "/mirror/api/repositories/{repository}/packages",
+          "status": 200,
+          "file": "a-maven-cache-holding-a-cached-artifact/listRepositoryPackages.json",
+          "frozen": {
+            "ids": [],
+            "instants": [
+              "$.repository.createdAt",
+              "$.packages[*].versions[*].cachedAt",
+              "$.packages[*].versions[*].lastAccessedAt",
+              "$.packages[*].lastAccessedAt"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
       "name": "a maven cache holding cached metadata",
       "slug": "a-maven-cache-holding-cached-metadata",
       "params": {
@@ -107,9 +135,29 @@
     {
       "name": "a mirror holding a pinned and an unpinned tag",
       "slug": "a-mirror-holding-a-pinned-and-an-unpinned-tag",
-      "params": {},
+      "params": {
+        "repository": "hub"
+      },
       "dependsOn": [],
       "operations": [
+        {
+          "operationId": "listRepositoryPackages",
+          "method": "GET",
+          "path": "/mirror/api/repositories/{repository}/packages",
+          "status": 200,
+          "file": "a-mirror-holding-a-pinned-and-an-unpinned-tag/listRepositoryPackages.json",
+          "frozen": {
+            "ids": [],
+            "instants": [
+              "$.repository.createdAt",
+              "$.packages[*].versions[*].cachedAt",
+              "$.packages[*].versions[*].lastAccessedAt",
+              "$.packages[*].lastAccessedAt"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
         {
           "operationId": "sweepGc",
           "method": "POST",
@@ -176,6 +224,28 @@
       ]
     },
     {
+      "name": "no cache root of that name",
+      "slug": "no-cache-root-of-that-name",
+      "params": {
+        "repository": "contract-absent-root"
+      },
+      "dependsOn": [],
+      "operations": [
+        {
+          "operationId": "listRepositoryPackages",
+          "method": "GET",
+          "path": "/mirror/api/repositories/{repository}/packages",
+          "status": 404,
+          "frozen": {
+            "ids": [],
+            "instants": [],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        }
+      ]
+    },
+    {
       "name": "no maven artifact of that name upstream",
       "slug": "no-maven-artifact-of-that-name-upstream",
       "params": {
@@ -225,7 +295,9 @@
     {
       "name": "the default caches",
       "slug": "the-default-caches",
-      "params": {},
+      "params": {
+        "repository": "hub"
+      },
       "dependsOn": [],
       "operations": [
         {
@@ -238,6 +310,21 @@
             "ids": [],
             "instants": [
               "$.repositories[*].createdAt"
+            ],
+            "strings": [],
+            "listFilteredTo": null
+          }
+        },
+        {
+          "operationId": "listRepositoryPackages",
+          "method": "GET",
+          "path": "/mirror/api/repositories/{repository}/packages",
+          "status": 200,
+          "file": "the-default-caches/listRepositoryPackages.json",
+          "frozen": {
+            "ids": [],
+            "instants": [
+              "$.repository.createdAt"
             ],
             "strings": [],
             "listFilteredTo": null

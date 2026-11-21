@@ -112,6 +112,16 @@ class ConsumerPactVerificationTest {
     return states.params(ProviderStates.THE_DEFAULT_CACHES);
   }
 
+  @State(ProviderStates.NO_CACHE_ROOT_OF_THAT_NAME)
+  Map<String, String> noCacheRootOfThatName() {
+    return states.params(ProviderStates.NO_CACHE_ROOT_OF_THAT_NAME);
+  }
+
+  @State(ProviderStates.A_MAVEN_CACHE_HOLDING_A_CACHED_ARTIFACT)
+  Map<String, String> aMavenCacheHoldingACachedArtifact() {
+    return states.params(ProviderStates.A_MAVEN_CACHE_HOLDING_A_CACHED_ARTIFACT);
+  }
+
   @State(ProviderStates.A_MIRROR_FRONTING_NO_REGISTRIES)
   Map<String, String> aMirrorFrontingNoRegistries() {
     return states.params(ProviderStates.A_MIRROR_FRONTING_NO_REGISTRIES);

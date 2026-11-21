@@ -1,0 +1,29 @@
+{
+  "repository": {
+    "name": "central",
+    "type": "maven-proxy",
+    "upstream": "https://repo1.maven.org/maven2",
+    "createdAt": "2026-01-01T00:00:00Z",
+    "evictionWindow": "P90D"
+  },
+  "packages": [
+    {
+      "name": "org.example:contract-library",
+      "versions": [
+        {
+          "version": "1.0.0",
+          "labels": [],
+          "files": [
+            "contract-library-1.0.0.jar",
+            "contract-library-1.0.0.pom"
+          ],
+          "sizeBytes": 160,
+          "cachedAt": "2026-01-01T00:00:00Z",
+          "lastAccessedAt": "2026-01-01T00:00:00Z"
+        }
+      ],
+      "sizeBytes": 160,
+      "lastAccessedAt": "2026-01-01T00:00:00Z"
+    }
+  ]
+}

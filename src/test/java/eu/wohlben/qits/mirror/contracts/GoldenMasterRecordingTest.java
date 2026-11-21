@@ -157,6 +157,9 @@ class GoldenMasterRecordingTest {
   static final String MAVEN_METADATA =
       "/artifacts/maven/central/{groupPath}/{artifact}/maven-metadata.xml";
 
+  /** {@code GET /mirror/api/repositories/<repository>/packages}: one root's drill-down. */
+  static final String REPOSITORY_PACKAGES = "/mirror/api/repositories/{repository}/packages";
+
   /** {@code GET /npm/npmjs/<package>}: the npmjs cache on the mount qits-maintenance derives. */
   static final String NPM_PACKUMENT = "/npm/npmjs/{package}";
 
@@ -186,12 +189,39 @@ class GoldenMasterRecordingTest {
               "GET",
               "/mirror/api/upstreams",
               200),
+          // A root holding nothing (qits-2358): `hub` with no image cached.
+          new Interaction(
+              ProviderStates.THE_DEFAULT_CACHES,
+              "listRepositoryPackages",
+              "GET",
+              REPOSITORY_PACKAGES,
+              200),
           new Interaction(
               ProviderStates.AN_NPM_CACHE_HOLDING_A_PACKAGE,
               "listRepositoryPackages",
               "GET",
-              "/mirror/api/repositories/{repository}/packages",
+              REPOSITORY_PACKAGES,
               200),
+          // A maven version's files (qits-2358): the jar and pom it is cached as.
+          new Interaction(
+              ProviderStates.A_MAVEN_CACHE_HOLDING_A_CACHED_ARTIFACT,
+              "listRepositoryPackages",
+              "GET",
+              REPOSITORY_PACKAGES,
+              200),
+          // An OCI root's images, tags as labels (qits-2358) — the sweep state's two node tags.
+          new Interaction(
+              ProviderStates.A_MIRROR_HOLDING_A_PINNED_AND_AN_UNPINNED_TAG,
+              "listRepositoryPackages",
+              "GET",
+              REPOSITORY_PACKAGES,
+              200),
+          // A root this service does not have (qits-2358): no JSON document, the status is the answer.
+          Interaction.statusOnly(
+              ProviderStates.NO_CACHE_ROOT_OF_THAT_NAME,
+              "listRepositoryPackages",
+              REPOSITORY_PACKAGES,
+              404),
           // The invalidate door, as an operator drops one cached maven-metadata.xml.
           new Interaction(
               ProviderStates.A_MAVEN_CACHE_HOLDING_METADATA,

@@ -1,0 +1,10 @@
+{
+  "repository": {
+    "name": "hub",
+    "type": "oci-mirror",
+    "upstream": "docker.io",
+    "createdAt": "2026-01-01T00:00:00Z",
+    "evictionWindow": "P30D"
+  },
+  "packages": []
+}

@@ -3,6 +3,7 @@ package eu.wohlben.qits.mirror.contracts;
 import eu.wohlben.qits.artifacts.control.NpmPackageName;
 import eu.wohlben.qits.artifacts.control.OciMirrorUpstreams;
 import eu.wohlben.qits.artifacts.dto.MirrorUpstreamSummary;
+import eu.wohlben.qits.artifacts.entity.MavenArtifact;
 import eu.wohlben.qits.artifacts.entity.NpmDistTag;
 import eu.wohlben.qits.artifacts.entity.NpmVersion;
 import eu.wohlben.qits.artifacts.entity.OciManifest;
@@ -61,8 +62,26 @@ import java.util.function.Supplier;
 @ApplicationScoped
 public class ProviderStates {
 
-  /** The five cache roots this service registers, and nothing cached in them. */
+  /**
+   * The five cache roots this service registers, and nothing cached in them. Its {@code repository}
+   * param names {@code hub}, so {@code listRepositoryPackages} records a root holding nothing
+   * (qits-2358).
+   */
   public static final String THE_DEFAULT_CACHES = "the default caches";
+
+  /**
+   * The default caches, and a {@code repository} param naming no cache root: {@code
+   * listRepositoryPackages} answers 404 (qits-2358).
+   */
+  public static final String NO_CACHE_ROOT_OF_THAT_NAME = "no cache root of that name";
+
+  /**
+   * The {@code central} cache holding {@code org.example:contract-library:1.0.0} — one jar and one
+   * pom, real {@code maven_artifact} rows, so {@code listRepositoryPackages} shows a maven
+   * version's {@code files} (qits-2358).
+   */
+  public static final String A_MAVEN_CACHE_HOLDING_A_CACHED_ARTIFACT =
+      "a maven cache holding a cached artifact";
 
   /**
    * The default caches with every OCI upstream removed: {@code listUpstreams} answers an empty list,
@@ -112,6 +131,8 @@ public class ProviderStates {
   static final String MIRROR_PINNED_TAG = "24-alpine";
   static final String MIRROR_UNPINNED_TAG = "22-alpine";
 
+  static final String ABSENT_REPOSITORY = "contract-absent-root";
+
   static final String MAVEN_GROUP = "org.example";
   static final String MAVEN_ARTIFACT = "contract-library";
   static final String MAVEN_ABSENT_ARTIFACT = "contract-absent";
@@ -124,6 +145,8 @@ public class ProviderStates {
   static final String NPM_PACKAGE = "left-pad";
   static final String NPM_VERSION = "1.3.0";
   static final int NPM_TARBALL_BYTES = 70;
+  static final int MAVEN_JAR_BYTES = 120;
+  static final int MAVEN_POM_BYTES = 40;
   static final Instant CACHED_AT = Instant.parse("2026-01-01T00:00:00Z");
 
   /** What a state hands back: its parameters, keys sorted. */
@@ -143,6 +166,8 @@ public class ProviderStates {
 
   public ProviderStates() {
     states.put(THE_DEFAULT_CACHES, this::theDefaultCaches);
+    states.put(NO_CACHE_ROOT_OF_THAT_NAME, this::noCacheRootOfThatName);
+    states.put(A_MAVEN_CACHE_HOLDING_A_CACHED_ARTIFACT, this::aMavenCacheHoldingACachedArtifact);
     states.put(A_MIRROR_FRONTING_NO_REGISTRIES, this::aMirrorFrontingNoRegistries);
     states.put(AN_NPM_CACHE_HOLDING_A_PACKAGE, this::anNpmCacheHoldingAPackage);
     states.put(A_CACHED_MAVEN_ARTIFACT, this::aCachedMavenArtifact);
@@ -184,13 +209,58 @@ public class ProviderStates {
   /**
    * The two package caches ({@code npmjs}, {@code central}) and the three OCI namespaces ({@code
    * hub}, {@code quay}, {@code redhat}, from the V1 prefill), with nothing cached in any of them.
+   * The {@code repository} param is {@code hub}, an empty root to list.
    */
   private Setup theDefaultCaches() {
     seeder.ensureDefaults();
     clearNpmCache();
     clearMavenCache();
     clearOciCache();
-    return new Setup(Map.of());
+    return new Setup(Map.of("repository", MIRROR_REPOSITORY));
+  }
+
+  /** The default caches; the {@code repository} param names a root this service does not have. */
+  private Setup noCacheRootOfThatName() {
+    seeder.ensureDefaults();
+    clearNpmCache();
+    clearMavenCache();
+    clearOciCache();
+    return new Setup(Map.of("repository", ABSENT_REPOSITORY));
+  }
+
+  /**
+   * The default caches, and in {@code central} the jar ({@value #MAVEN_JAR_BYTES} bytes) and pom
+   * ({@value #MAVEN_POM_BYTES} bytes) of {@code org.example:contract-library:1.0.0}, both cached
+   * and last read at {@link #CACHED_AT}.
+   */
+  private Setup aMavenCacheHoldingACachedArtifact() {
+    seeder.ensureDefaults();
+    clearNpmCache();
+    clearMavenCache();
+    clearOciCache();
+    String directory =
+        MAVEN_GROUP.replace('.', '/') + "/" + MAVEN_ARTIFACT + "/" + MAVEN_VERSIONS[0] + "/";
+    String file = MAVEN_ARTIFACT + "-" + MAVEN_VERSIONS[0];
+    String jar = stored(filled(MAVEN_JAR_BYTES, (byte) 21));
+    String pom = stored(filled(MAVEN_POM_BYTES, (byte) 22));
+    QuarkusTransaction.requiringNew()
+        .run(
+            () -> {
+              cachedMavenFile(directory + file + ".jar", jar, MAVEN_JAR_BYTES).persist();
+              cachedMavenFile(directory + file + ".pom", pom, MAVEN_POM_BYTES).persist();
+            });
+    return new Setup(Map.of("repository", MirrorRepositorySeeder.MAVEN_CACHE));
+  }
+
+  private static MavenArtifact cachedMavenFile(String path, String blobId, long size) {
+    MavenArtifact row = new MavenArtifact();
+    row.repository = MirrorRepositorySeeder.MAVEN_CACHE;
+    row.path = path;
+    row.blobId = blobId;
+    row.sizeBytes = size;
+    row.createdAt = CACHED_AT;
+    row.accessedAt = CACHED_AT;
+    return row;
   }
 
   /**
@@ -354,7 +424,7 @@ public class ProviderStates {
     cachedImage(MIRROR_PINNED_TAG, (byte) 41);
     cachedImage(MIRROR_UNPINNED_TAG, (byte) 42);
     sql("update blob set stored_at = timestamptz '2026-01-01 00:00:00+00'");
-    return new Setup(Map.of());
+    return new Setup(Map.of("repository", MIRROR_REPOSITORY));
   }
 
   /** One single-arch {@code hub/library/node} image under {@code tag}, its bytes filled with {@code fill}. */
@@ -497,9 +567,12 @@ public class ProviderStates {
     }
   }
 
-  /** Empties the maven cache's cached upstream metadata, so a state owns what it serves. */
+  /**
+   * Empties the maven cache's cached files and upstream metadata, so a state owns what it serves
+   * and lists.
+   */
   private void clearMavenCache() {
-    delete(MirrorRepositorySeeder.MAVEN_CACHE, "maven_proxy_metadata");
+    delete(MirrorRepositorySeeder.MAVEN_CACHE, "maven_artifact", "maven_proxy_metadata");
   }
 
   private void delete(String repository, String... tables) {

@@ -1,0 +1,38 @@
+{
+  "repository": {
+    "name": "hub",
+    "type": "oci-mirror",
+    "upstream": "docker.io",
+    "createdAt": "2026-01-01T00:00:00Z",
+    "evictionWindow": "P30D"
+  },
+  "packages": [
+    {
+      "name": "library/node",
+      "versions": [
+        {
+          "version": "sha256:555492b05ef577ef6c299325de61258ce08a7d971cfb906d5b9156451dd9b3fe",
+          "labels": [
+            "24-alpine"
+          ],
+          "files": [],
+          "sizeBytes": 400,
+          "cachedAt": "2026-01-01T00:00:00Z",
+          "lastAccessedAt": "2026-01-01T00:00:00Z"
+        },
+        {
+          "version": "sha256:a88d1a5183df51d85bc9cda1e754f7badb96c8148d5b6764fd08ae4fb2a6f038",
+          "labels": [
+            "22-alpine"
+          ],
+          "files": [],
+          "sizeBytes": 400,
+          "cachedAt": "2026-01-01T00:00:00Z",
+          "lastAccessedAt": "2026-01-01T00:00:00Z"
+        }
+      ],
+      "sizeBytes": 800,
+      "lastAccessedAt": "2026-01-01T00:00:00Z"
+    }
+  ]
+}
