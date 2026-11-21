@@ -94,7 +94,7 @@ back on the very next request — which is the whole difference from a collectio
 
 | Path | Answers |
 |---|---|
-| `GET /mirror/api/repositories` | `{"repositories":[{name, type, upstream, createdAt}]}` — every cache root and what it fronts |
+| `GET /mirror/api/repositories` | `{"repositories":[{name, type, upstream, createdAt, evictionWindow}]}` — every cache root, what it fronts, and how long an entry may sit unused before the next sweep evicts it |
 | `GET /mirror/api/upstreams` | `{"upstreams":[{host, namespace, cachedImages, createdAt}]}` — every mirrored registry |
 | `GET /mirror/api/repositories/{repository}/packages` | what one root holds, folded into coordinates |
 | `DELETE /mirror/api/repositories/{repository}/entries?path=…` | evicts one cached entry; `{repository, path, kind, rowsRemoved}`. **The only guarded route here** — `qits:admin` or `qits:system` (`qits:admin-agent`, an ADMIN workspace's own agent, is admitted wherever `qits:admin` is — qits-628 follow-up; `qits:desk`, the delivery desk's token role, is admitted wherever `qits:admin-agent` is — qits-1596 follow-up; `qits:desk-admin`, the desk's admin grant, is likewise admitted wherever `qits:admin-agent` is — qits-1621). `404` if nothing was cached there, `409` if the root is not a maven pull-through |
@@ -105,6 +105,11 @@ is **promised**; it draws everything else as a dynamic column typed by what the 
 turns out to be. So a field added on this side appears in the UI with no client
 release — and a field that would be a guess must not be added at all, because a
 plausible wrong number in a table is worse than a missing one.
+
+`evictionWindow` is the type's `qits.mirror.eviction.window.<wire name>` as ISO-8601
+(`P30D`, `P90D` — whole days spelled as days), and `null` when the sweep is switched
+off or the type has no window. It is the window rule only: a mirrored OCI tag is also
+kept or condemned by the image pins the sweep is handed, which the listing cannot know.
 
 **A failed read is a 5xx, never an empty answer.** This is the service where the cost
 of the opposite is highest: a wrong "there is no such thing" is cached by every docker,

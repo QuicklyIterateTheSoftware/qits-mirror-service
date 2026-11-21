@@ -273,6 +273,8 @@ components:
           type: string
         createdAt:
           $ref: "#/components/schemas/Instant"
+        evictionWindow:
+          type: string
     MirrorSweepReport:
       type: object
       properties:

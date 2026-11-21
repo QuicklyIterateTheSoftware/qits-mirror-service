@@ -23,5 +23,16 @@ import java.time.Instant;
  *     nothing answers, which is a row whose upstream was deleted: the namespace keeps serving what
  *     is cached and can fetch nothing new, and a blank cell is the honest picture of that.
  * @param createdAt when the row was written. Cheap — it is on the row already.
+ * @param evictionWindow how long an entry here may sit unused before the next sweep evicts it, as
+ *     an ISO-8601 duration ({@code P30D}, {@code P90D}; whole days are spelled in days, never as
+ *     {@code PT720H}) — so a page can say "entries unused longer than this are evicted by the next
+ *     sweep" without a copy of the configuration. It is the type's {@code
+ *     qits.mirror.eviction.window.<wire name>}. Null when the sweep is switched off ({@code
+ *     qits.mirror.eviction.enabled=false}) or the type has no window: an unswept cache has no
+ *     window, and printing one would promise an eviction that never comes. <b>The WINDOW rule
+ *     only</b>: an OCI tag is also judged by the image pins the sweep is handed at sweep time — a
+ *     pinned tag is kept and an unpinned one condemned whatever its age — and this row does not
+ *     know those pins.
  */
-public record MirrorRepositoryRow(String name, String type, String upstream, Instant createdAt) {}
+public record MirrorRepositoryRow(
+    String name, String type, String upstream, Instant createdAt, String evictionWindow) {}

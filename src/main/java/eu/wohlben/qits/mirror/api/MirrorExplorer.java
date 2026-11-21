@@ -9,11 +9,13 @@ import eu.wohlben.qits.blobstore.entity.ArtifactRepository;
 import eu.wohlben.qits.blobstore.entity.RepositoryTypeProfile;
 import eu.wohlben.qits.blobstore.persistence.ArtifactRepositoryRepository;
 import eu.wohlben.qits.db.DbRetry;
+import eu.wohlben.qits.mirror.gc.EvictionConfig;
 import io.quarkus.panache.common.Sort;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
 import io.quarkus.hibernate.orm.PersistenceUnit;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -56,6 +58,8 @@ public class MirrorExplorer {
 
   @Inject OciMirrorUpstreams upstreams;
 
+  @Inject EvictionConfig eviction;
+
   @Inject @PersistenceUnit("mirror") EntityManager entityManager;
 
   /**
@@ -90,7 +94,8 @@ public class MirrorExplorer {
                     repository.name,
                     RepositoryTypeProfile.wireNameOf(repository.type),
                     upstreamOf(repository),
-                    repository.createdAt));
+                    repository.createdAt,
+                    evictionWindowOf(repository)));
           }
           return rows;
         });
@@ -149,7 +154,7 @@ public class MirrorExplorer {
              and t.manifest_digest = m.digest
          where m.repository = ?1
          group by m.image_name, m.digest, m.created_at, m.accessed_at, m.size_bytes
-         order by m.image_name, m.created_at desc
+         order by m.image_name, m.created_at desc, m.digest
         """).setParameter(1, repository).getResultList();
     return grouped(rows);
   }
@@ -223,6 +228,31 @@ public class MirrorExplorer {
     CachedPackageVersionRow build() {
       return new CachedPackageVersionRow(version, labels, files, size, cachedAt, accessedAt);
     }
+  }
+
+  /**
+   * The type's eviction window as ISO-8601, or null when no sweep will apply one.
+   *
+   * <p>Not {@link EvictionConfig#requireWindow}: a listing that threw for one unconfigured type
+   * would hide every root that is fine, and "no window" is the honest cell for that row.
+   */
+  private String evictionWindowOf(ArtifactRepository repository) {
+    if (!eviction.enabled()) {
+      return null;
+    }
+    Duration window = eviction.window().get(RepositoryTypeProfile.wireNameOf(repository.type));
+    return window == null ? null : iso(window);
+  }
+
+  /**
+   * {@link Duration#toString} with whole days spelled as days: it renders {@code P30D} as {@code
+   * PT720H}, which is the same length and not what anybody configured or reads.
+   */
+  static String iso(Duration duration) {
+    if (!duration.isZero() && duration.toNanos() % Duration.ofDays(1).toNanos() == 0) {
+      return "P" + duration.toDays() + "D";
+    }
+    return duration.toString();
   }
 
   /**

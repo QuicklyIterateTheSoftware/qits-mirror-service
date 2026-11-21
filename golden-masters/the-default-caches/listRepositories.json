@@ -4,31 +4,36 @@
       "name": "central",
       "type": "maven-proxy",
       "upstream": "https://repo1.maven.org/maven2",
-      "createdAt": "2026-01-01T00:00:00Z"
+      "createdAt": "2026-01-01T00:00:00Z",
+      "evictionWindow": "P90D"
     },
     {
       "name": "hub",
       "type": "oci-mirror",
       "upstream": "docker.io",
-      "createdAt": "2026-01-01T00:00:00Z"
+      "createdAt": "2026-01-01T00:00:00Z",
+      "evictionWindow": "P30D"
     },
     {
       "name": "npmjs",
       "type": "npm-proxy",
       "upstream": "https://registry.npmjs.org",
-      "createdAt": "2026-01-01T00:00:00Z"
+      "createdAt": "2026-01-01T00:00:00Z",
+      "evictionWindow": "P30D"
     },
     {
       "name": "quay",
       "type": "oci-mirror",
       "upstream": "quay.io",
-      "createdAt": "2026-01-01T00:00:00Z"
+      "createdAt": "2026-01-01T00:00:00Z",
+      "evictionWindow": "P30D"
     },
     {
       "name": "redhat",
       "type": "oci-mirror",
       "upstream": "registry.access.redhat.com",
-      "createdAt": "2026-01-01T00:00:00Z"
+      "createdAt": "2026-01-01T00:00:00Z",
+      "evictionWindow": "P30D"
     }
   ]
 }

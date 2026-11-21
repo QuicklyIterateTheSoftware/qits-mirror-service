@@ -3,7 +3,8 @@
     "name": "npmjs",
     "type": "npm-proxy",
     "upstream": "https://registry.npmjs.org",
-    "createdAt": "2026-01-01T00:00:00Z"
+    "createdAt": "2026-01-01T00:00:00Z",
+    "evictionWindow": "P30D"
   },
   "packages": [
     {
