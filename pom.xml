@@ -85,6 +85,7 @@
              `pacts/<consumer>_qits-mirror-service.json`. Exact pins; qits-maintenance bumps them. -->
         <qits.maintenance-service-pacts-qits-mirror-service.version>2026.1019.73752</qits.maintenance-service-pacts-qits-mirror-service.version>
         <qits.orchestrator-service-pacts-qits-mirror-service.version>2026.1117.21148</qits.orchestrator-service-pacts-qits-mirror-service.version>
+        <qits.landing-app-pacts-qits-mirror-service.version>2026.1121.10937</qits.landing-app-pacts-qits-mirror-service.version>
         <!-- The consumer half of the contracts (ticket qits-1149): the golden-master reader, and the
              qits-idp recordings contracts/IdpPactTest binds. Exact pins; the bump train moves them. -->
         <qits.pact-consumer.version>2026.1106.507</qits.pact-consumer.version>
@@ -434,6 +435,14 @@
             <groupId>eu.wohlben.qits</groupId>
             <artifactId>qits-orchestrator-service-pacts-qits-mirror-service</artifactId>
             <version>${qits.orchestrator-service-pacts-qits-mirror-service.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <!-- qits-landing-app's pact against this provider: the Mirror section's OCI upstreams
+                 page reading listUpstreams (ticket qits-2357). -->
+            <groupId>eu.wohlben.qits</groupId>
+            <artifactId>qits-landing-app-pacts-qits-mirror-service</artifactId>
+            <version>${qits.landing-app-pacts-qits-mirror-service.version}</version>
             <scope>test</scope>
         </dependency>
         <dependency>
