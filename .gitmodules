@@ -1,6 +1,6 @@
 [submodule "qits-mirror-frontend"]
 	path = src/main/webui
-	url = https://github.com/QuicklyIterateTheSoftware/qits-mirror-frontend.git
+	url = ../qits-mirror-frontend.git
 	ignore = all
 	update = merge
 	branch = main
