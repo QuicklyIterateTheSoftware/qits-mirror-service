@@ -42,8 +42,8 @@
              reactor now and ships on its version. The two pins must move together — the format jars
              are compiled against the store's classes, and the store's packages are
              eu.wohlben.qits.blobstore.* since this release. -->
-        <qits.blobstore.version>2026.1115.51934</qits.blobstore.version>
-        <qits.registries.version>2026.1115.51934</qits.registries.version>
+        <qits.blobstore.version>2026.1125.141810</qits.blobstore.version>
+        <qits.registries.version>2026.1125.141810</qits.registries.version>
         <!-- The platform's datasource resilience baseline: qits-db-core carries PatientPgDriver,
              which the datasource block in application.properties names, and qits-arch-rules carries
              the test that fails this build when a postgresql datasource is missing a line of that
@@ -67,11 +67,11 @@
 
              Same pin as qits-db-core and qits-arch-rules above — one release of
              libs/qits-integrations-quarkus publishes all three, and the three move together. -->
-        <qits.auth-core.version>2026.1106.507</qits.auth-core.version>
+        <qits.auth-core.version>2026.1125.60148</qits.auth-core.version>
         <!-- CallerServerFilter/CallerClientFilter: jandex-indexed filters that record inbound
              X-Qits-Caller as the qits.caller span attribute and stamp it on outgoing REST-client
              calls. Also published by qits-integrations-quarkus. -->
-        <qits.http-core.version>2026.1106.507</qits.http-core.version>
+        <qits.http-core.version>2026.1125.110206</qits.http-core.version>
         <!-- qits-telemetry-core (epic qits-428): the three OTLP/HTTP exporters as CDI beans whose
              header supplier carries the `qits` oidc client's current bearer, so spans, logs and
              metrics reach qits-observability at its edge host. Published by
@@ -89,7 +89,7 @@
         <!-- The consumer half of the contracts (ticket qits-1149): the golden-master reader, and the
              qits-idp recordings contracts/IdpPactTest binds. Exact pins; the bump train moves them. -->
         <qits.pact-consumer.version>2026.1106.507</qits.pact-consumer.version>
-        <qits.idp-golden-masters.version>2026.1123.194348</qits.idp-golden-masters.version>
+        <qits.idp-golden-masters.version>2026.1125.71255</qits.idp-golden-masters.version>
         <!-- Where the two library repositories' jars come from when they are not in ~/.m2 — which
              is every build that is not a developer's. The default is the public host, which answers
              401 without the commissioned client; the image build derives the same address from its
